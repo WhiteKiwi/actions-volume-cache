@@ -13,7 +13,9 @@ agent-specific guidance.
 
 ## Tooling and commands
 
-Use Node 24, pnpm 11.25.0, and Linux with util-linux `flock`.
+Use Linux, Node 24, pnpm 11.25.0, and Go 1.27.2. Go is a contributor build
+requirement; consumers use the included Linux x64/arm64 executables and need no
+external `flock` command or compiler.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -21,17 +23,24 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm exec prettier --check .
+gofmt -l lock-helper
 ```
 
 `pnpm check` runs typechecking and `pnpm test`; tests rebuild bundles first.
-`pnpm build` bundles main/post using esbuild. Distributables include runtime
-dependencies and must be committed. Tests use Node's test runner plus tsx; fixtures
-live only in `.cache/tests`, and the pnpm store is local to `.cache/pnpm-store`.
+`pnpm build` first cross-compiles both static lock helpers, then bundles main/post
+using esbuild. Commit all of `dist/`, including `dist/bin/manifest.json` and the Go
+runtime license. The build pins Go, disables CGO, removes paths/build IDs, and
+keeps build caches in `.cache/go-build` and `.cache/go-mod`. Tests use Node's test
+runner plus tsx; fixtures live only in `.cache/tests`, and the pnpm store is local
+to `.cache/pnpm-store`.
 
 Use `pnpm exec prettier --write .` to format source/configuration/docs. Generated
-bundles and lockfiles are excluded from formatting. The CI workflow verifies
-reproducible bundles, local acceptance tests, and real GitHub post-job lifecycle
-behavior using a test-only post observer. The expected-failure probe is a separate
+bundles and lockfiles are excluded from formatting. Run `gofmt -w lock-helper` when
+changing Go source. The CI workflow verifies reproducible distributables, local
+acceptance tests, and real GitHub post-job lifecycle behavior on native x64 and
+arm64 Linux runners using a test-only post observer. A standalone test runs with
+an empty command search path to check that consumers need no host lock utility.
+The expected-failure probe is a separate
 workflow, checked by a gate so observer errors cannot pass as expected failures.
 Run that probe on a separate diagnostic commit/branch (or manually after merging
 the workflow); intentional failure checks must not be attached to the PR head.

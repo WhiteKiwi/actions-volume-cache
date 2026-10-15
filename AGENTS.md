@@ -45,10 +45,12 @@ For documentation-only changes, check relative links, examples, consistency,
 whitespace, and Git status. Do not claim runtime tests passed when no runtime exists.
 
 For implementation changes, use the meaningful scenarios in `docs/TESTING.md`.
-Use Node 24 and pnpm 11.25.0. Run `pnpm install --frozen-lockfile`, `pnpm check`,
+Use Node 24, pnpm 11.25.0, and Go 1.27.2. Run `pnpm install --frozen-lockfile`, `pnpm check`,
 and `pnpm exec prettier --check .`. `pnpm check` includes typechecking, bundling,
-and tests. Commit the resulting `dist/main.js` and `dist/post.js`; CI must reproduce
-them without a diff. Build with `pnpm build` when only regenerating bundles.
+and tests. Commit all of `dist/`, including both Linux lock helpers, their checksum
+manifest, and the Go runtime license; CI must reproduce them without a diff.
+Run `gofmt` on `lock-helper/`. Build with `pnpm build` when only regenerating
+distributables. Consumers need neither Go nor an external `flock` command.
 
 The action under `tests/fixtures/post-observer` is a private CI fixture, not a
 second supported public action. Do not confuse its always-running post observer

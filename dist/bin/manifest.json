@@ -1,0 +1,7 @@
+{
+  "go": "go1.27.2",
+  "files": {
+    "lock-linux-x64": "ac0f72d03a25e55debb371f82a401ad544c429752b8be152f4d7248eae1c9a2a",
+    "lock-linux-arm64": "d98ba33f118cb76bf3e6f4e19b53104a77de64d7891a1d2d7a0974fcc231b1b1"
+  }
+}

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { removeOwned, statOptional, within } from './fs.js';
+import { statOptional, within } from './fs.js';
 import { selectUnits, validateOptions } from './paths.js';
 import { recoverSelectedRestores, restoreMerged } from './restore.js';
 import { Store } from './store.js';
@@ -31,10 +31,10 @@ function candidates(records: StoredEntry[], options: Options, logical: string): 
   return result;
 }
 
-async function clean(store: Store): Promise<void> {
+async function clean(store: Store, hooks: TestHooks): Promise<void> {
   if (!store.options.autoCleanup) return;
   try {
-    await store.cleanup();
+    await store.cleanup(hooks);
   } catch (error) {
     if (error instanceof InputError) throw error;
     store.report.warning('Automatic cache cleanup failed; continuing without additional cleanup');
@@ -48,13 +48,13 @@ export async function restore(
 ): Promise<'' | 'true' | 'false'> {
   options = await validateOptions(options);
   const store = new Store(options, report);
-  return store.locked(async () => {
-    await hooks.point?.('lock-acquired');
+  return store.workspace(async () => {
     // Journals must be recovered before glob expansion or parent selection can
     // hide a temporarily missing leaf or a descendant transaction.
     await recoverSelectedRestores(options);
-    await clean(store);
-    const records = await store.list();
+    await clean(store, hooks);
+    const records = await store.locked(() => store.list());
+    await hooks.point?.('entries-listed');
     const ids = records
       .filter((record) => record.entry.repository === options.repository)
       .map((record) => record.entry.path);
@@ -67,20 +67,28 @@ export async function restore(
       let found = false;
       for (const record of candidates(records, options, unit.id)) {
         try {
-          const manifest = await store.manifest(record);
-          const nodes = selectedNodes(manifest, unit.destination, options);
-          if (!hasData(nodes)) continue;
-          await restoreMerged(
-            path.join(store.generation(record), 'payload'),
-            unit.destination,
-            nodes,
+          const hit = await store.reading(
+            record,
+            async (current) => {
+              const manifest = await store.manifest(current);
+              const nodes = selectedNodes(manifest, unit.destination, options);
+              if (!hasData(nodes)) return false;
+              await restoreMerged(
+                path.join(store.generation(current), 'payload'),
+                unit.destination,
+                nodes,
+                hooks,
+              );
+              try {
+                await store.touched(current);
+              } catch {
+                report.warning('Cache restored but access timestamp could not be updated');
+              }
+              return true;
+            },
             hooks,
           );
-          try {
-            await store.touched(record);
-          } catch {
-            report.warning('Cache restored but access timestamp could not be updated');
-          }
+          if (!hit) continue;
           restored++;
           restoredPaths.push(unit.destination);
           found = true;
@@ -107,24 +115,27 @@ export async function save(
 ): Promise<void> {
   options = await validateOptions(options);
   const store = new Store(options, report);
-  await store.locked(async () => {
-    await hooks.point?.('lock-acquired');
+  await store.workspace(async () => {
     await recoverSelectedRestores(options);
     // Run cleanup before staging; it may reclaim abandoned copies from killed writers.
-    await clean(store);
+    await clean(store, hooks);
     const selection = await selectUnits(options, [], false);
     let count = 0;
     for (const unit of selection.units) {
       if (!(await statOptional(unit.destination))) continue;
       const staging = await store.staging();
       try {
-        const manifest = await snapshot(unit.destination, path.join(staging, 'payload'), options);
+        const manifest = await snapshot(
+          unit.destination,
+          path.join(staging.directory, 'payload'),
+          options,
+        );
         if (!hasData(manifest.nodes)) {
           report.warning(`No eligible data to save for ${unit.id}; keeping previous entry`);
           continue;
         }
         await hooks.point?.('save-prepared');
-        await store.publish(staging, options.key, unit.id, manifest, hooks);
+        await store.publish(staging.directory, options.key, unit.id, manifest, hooks);
         count++;
         report.info(`Saved ${unit.id} using key ${options.key}`);
         await hooks.point?.('save-published');
@@ -132,7 +143,7 @@ export async function save(
         if (error instanceof InputError) throw error;
         report.warning(`Cannot save ${unit.id}: ${safeMessage(error)}`);
       } finally {
-        await removeOwned(store.root, staging);
+        await store.dispose(staging);
       }
     }
     if (!count) report.warning('No cache entries saved; previous entries were preserved');

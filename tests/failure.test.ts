@@ -51,12 +51,49 @@ test('automatic cleanup disabled retains expired entries and abandoned staging',
     await save(f.options);
     const store = new Store(f.options, f.reporter);
     let staging = '';
-    await store.locked(async () => {
-      staging = await store.staging();
-    });
+    const abandoned = await store.staging();
+    staging = abandoned.directory;
+    await abandoned.release();
     await f.reset();
     assert.equal(await restore({ ...f.options, retentionDays: 0.000000001 }), 'true');
     assert.ok((await fs.stat(staging)).isDirectory());
+  } finally {
+    await f.close();
+  }
+});
+
+test('cleanup removes abandoned pointer temporaries while preserving corrupt committed data', async () => {
+  const f = await fixture();
+  try {
+    await f.file('target/a', 'committed');
+    await save(f.options);
+    const store = new Store(f.options, f.reporter);
+    const record = await store.locked(async () => (await store.list())[0]!);
+    const pointer = path.join(record.directory, 'current.json');
+    const temporary = path.join(
+      record.directory,
+      'current.json.00000000-0000-0000-0000-000000000000.tmp',
+    );
+    const unrelated = path.join(record.directory, 'current.json.not-a-uuid.tmp');
+    const generation = store.generation(record);
+    const manifest = await fs.readFile(path.join(generation, 'manifest.json'));
+    await fs.writeFile(pointer, '{corrupt pointer');
+    await fs.writeFile(temporary, 'abandoned pointer write');
+    await fs.writeFile(unrelated, 'preserve unknown file');
+    await f.reset();
+    assert.equal(await restore({ ...f.options, autoCleanup: false }, f.reporter), '');
+    assert.equal(await fs.readFile(temporary, 'utf8'), 'abandoned pointer write');
+    assert.equal(await restore(f.options, f.reporter), '');
+    await assert.rejects(fs.stat(temporary), { code: 'ENOENT' });
+    assert.equal(await fs.readFile(pointer, 'utf8'), '{corrupt pointer');
+    assert.equal(await fs.readFile(unrelated, 'utf8'), 'preserve unknown file');
+    assert.deepEqual(await fs.readdir(path.join(record.directory, 'generations')), [
+      record.entry.generation,
+    ]);
+    assert.deepEqual(await fs.readFile(path.join(generation, 'manifest.json')), manifest);
+    assert.equal(await fs.readFile(path.join(generation, 'payload/a'), 'utf8'), 'committed');
+    assert.deepEqual(await fs.readdir(path.join(store.root, 'garbage')), []);
+    assert.deepEqual(await fs.readdir(path.join(store.root, 'locks/operations')), []);
   } finally {
     await f.close();
   }

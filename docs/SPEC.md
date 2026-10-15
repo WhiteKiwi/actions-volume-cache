@@ -159,6 +159,16 @@ to finish. Concurrent saves to the same repository/key/path do not combine their
 contents: the last completed publication becomes the current cache. This order
 is publication completion, not job start time.
 
+Different repository/key/path entries can copy data concurrently. Multiple
+readers of one entry may overlap; publication and deletion exclude readers and
+other writers for that entry. Brief global metadata coordination is allowed for
+catalog consistency and aggregate admission, without holding it during payload
+copies or recursive deletion. Jobs must provide private destination paths.
+
+Include the Linux lock executable with the action so consumers need no external
+`flock` command, compiler, or package installation. The persistent volume mount
+remains an operator prerequisite.
+
 Build replacement data separately and publish a completed entry using coordinated
 filesystem operations. Readers and cleanup must never observe a half-written
 entry or lose data they are actively reading. Coordinate storage admission across

@@ -12,6 +12,26 @@ functional cache cases, input parsing, multi-process concurrency, failure/recove
 and distributable main/post tests. ENOSPC behavior is fault-injected; tests do not
 fill a real disk. Process-death tests do send SIGKILL to synthetic child workers.
 
+Scoped-lock regressions use separate workspaces and processes. They hold a reader
+while another key, path, or repository publishes; overlap shared readers of one
+entry; keep a writer waiting until both readers finish; and verify retention skips
+busy entries. Concurrent distinct-key snapshots race for one aggregate budget.
+A selected entry replaced before lock acquisition must restore the new generation.
+
+Operation-lease tests preserve active staging and detached garbage during other
+jobs' cleanup, then SIGKILL owners and reclaim the abandoned data. A cleaner
+paused after detachment must not block metadata or a replacement of the same
+entry. V2 starts cold beside legacy v1 data without cleaning or accounting it.
+
+Helper tests check shared/exclusive exclusion, bounded timeout, no-follow lock
+files, inherited-descriptor lifetime after helper exit, and orphaned waiters after
+Node dies. Both artifacts must match their checksum manifest, ELF architecture,
+executable mode, static-link requirement, and included Go runtime license. The
+standalone main/post fixture contains only `dist/` and `package.json` and uses an
+empty command search path, proving no host `flock` or Go is invoked. CI builds and
+runs tests plus the successful-job lifecycle on native x64 and arm64 Linux; actual
+CI results must be checked on the reviewed commit.
+
 Review regressions cover real pointer-rename failure and injected ENOSPC after
 moving a generation, SIGKILL before first/replacement pointer publication,
 workspace/home aliases including packaged main/post context validation, cached
@@ -19,6 +39,9 @@ descendants beneath missing/corrupt parents, and recovery before glob expansion
 after both a leaf backup and a nested file replacement. The five source-level
 regression cases also fail against the pre-fix PR source. Directory aliases below
 trusted roots remain rejected; unknown transaction-like directories are preserved.
+Corrupt-pointer cleanup removes abandoned UUID-named pointer-write temporaries
+while preserving the corrupt pointer, all generations, and unknown filenames;
+disabling automatic cleanup preserves those temporary files as well.
 
 Use synthetic data in disposable directories. A local filesystem experiment
 is not evidence that the complete action works. Test the main/post-job lifecycle

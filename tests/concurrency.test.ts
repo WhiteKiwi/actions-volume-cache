@@ -2,60 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { once } from 'node:events';
+import { type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { restore, save } from '../src/cache.js';
 import { Store } from '../src/store.js';
-import { type Options } from '../src/types.js';
 import { fixture } from './helpers.js';
+import { worker, signaled, terminate } from './processes.js';
 
-function worker(mode: string, options: Options, signal: string, pause = '') {
-  const child = spawn(
-    process.execPath,
-    ['--import', 'tsx', 'tests/worker.ts', mode, JSON.stringify(options), signal, pause],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (chunk) => {
-    stdout += String(chunk);
-  });
-  child.stderr.on('data', (chunk) => {
-    stderr += String(chunk);
-  });
-  const completed = new Promise<{
-    code: number | null;
-    signal: NodeJS.Signals | null;
-    stdout: string;
-    stderr: string;
-  }>((resolve, reject) => {
-    child.once('error', reject);
-    child.once('exit', (code, signal) => resolve({ code, signal, stdout, stderr }));
-  });
-  return { child, completed };
-}
-async function signaled(file: string): Promise<void> {
-  for (let attempt = 0; attempt < 300; attempt++) {
-    if (
-      await fs.stat(file).then(
-        () => true,
-        () => false,
-      )
-    )
-      return;
-    await delay(20);
-  }
-  throw new Error(`Worker did not reach ${file}`);
-}
-async function terminate(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const exited = once(child, 'exit');
-  child.kill('SIGKILL');
-  await exited;
-}
-
-test('kernel lock survives flock helper exit and serializes distinct-process publication', async () => {
+test('entry lock survives bundled helper exit and serializes same-entry publication', async () => {
   const f = await fixture();
   const children: ChildProcess[] = [];
   try {
@@ -65,14 +19,14 @@ test('kernel lock survives flock helper exit and serializes distinct-process pub
     await fs.writeFile(path.join(secondWorkspace, 'target/a'), 'second');
     const firstSignal = path.join(f.root, 'first-signal');
     const secondSignal = path.join(f.root, 'second-signal');
-    const a = worker('save', f.options, firstSignal, 'save-prepared');
+    const a = worker('save', f.options, firstSignal, 'entry-write-acquired');
     children.push(a.child);
     await signaled(firstSignal);
     const b = worker(
       'save',
       { ...f.options, workspace: secondWorkspace },
       secondSignal,
-      'lock-acquired',
+      'entry-write-acquired',
     );
     children.push(b.child);
     await delay(200);
@@ -82,7 +36,7 @@ test('kernel lock survives flock helper exit and serializes distinct-process pub
         () => false,
       ),
       false,
-      'second process must wait after flock helper has exited',
+      'second publisher must wait after the bundled helper has exited',
     );
     await fs.writeFile(`${firstSignal}.release`, 'release');
     assert.equal((await a.completed).code, 0);
@@ -141,7 +95,7 @@ test('reader holds a complete generation while a writer and cleanup wait', async
       'save',
       { ...f.options, workspace: other, retentionDays: 0.000001 },
       writerSignal,
-      'lock-acquired',
+      'entry-write-acquired',
     );
     children.push(writer.child);
     await delay(200);
@@ -169,9 +123,19 @@ test('concurrent distinct-key saves cannot bypass the aggregate admission budget
   const children: ChildProcess[] = [];
   try {
     await f.file('target/a', '12345');
-    const a = worker('save', { ...f.options, key: 'a' }, path.join(f.root, 'a'));
-    const b = worker('save', { ...f.options, key: 'b' }, path.join(f.root, 'b'));
-    children.push(a.child, b.child);
+    const other = path.join(f.root, 'other');
+    await fs.mkdir(path.join(other, 'target'), { recursive: true });
+    await fs.writeFile(path.join(other, 'target/a'), '12345');
+    const first = path.join(f.root, 'a');
+    const second = path.join(f.root, 'b');
+    const a = worker('save', { ...f.options, key: 'a' }, first, 'save-prepared');
+    children.push(a.child);
+    await signaled(first);
+    const b = worker('save', { ...f.options, workspace: other, key: 'b' }, second, 'save-prepared');
+    children.push(b.child);
+    await signaled(second);
+    await fs.writeFile(`${first}.release`, 'release');
+    await fs.writeFile(`${second}.release`, 'release');
     const results = await Promise.all([a.completed, b.completed]);
     assert.ok(results.every((result) => result.code === 0));
     assert.ok(results.some((result) => result.stderr.includes('max-cache-size')));

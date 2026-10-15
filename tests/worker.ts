@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { restore, save } from '../src/cache.js';
 import { type Options } from '../src/types.js';
+import { Store } from '../src/store.js';
 
 const [mode, serialized, signal, pause = ''] = process.argv.slice(2);
 const options = JSON.parse(serialized!) as Options;
@@ -31,4 +32,5 @@ const hooks = {
   },
 };
 if (mode === 'save') await save(options, report, hooks);
+else if (mode === 'cleanup') await new Store(options, report).cleanup(hooks);
 else process.stdout.write(await restore(options, report, hooks));
