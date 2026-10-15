@@ -37,7 +37,7 @@ function fixture() {
     if (method !== 'GET') state.mutations.push({ method, path, body });
     if (path.startsWith('/commits/')) return state.pr ? [state.pr] : [];
     if (path.startsWith('/pulls/'))
-      return state.files.map((filename) => ({ filename, status: 'modified' }));
+      return state.files.map((filename) => ({ filename, status: state.fileStatus || 'modified' }));
     if (path.startsWith('/contents/package.json'))
       return {
         content: Buffer.from(JSON.stringify({ version: state.oldVersion })).toString('base64'),
@@ -135,6 +135,15 @@ test('refuses mismatched versions and missing changelog before writing', async (
   ]) {
     const { state, args } = fixture();
     await assert.rejects(publishRelease({ ...args, ...patch }));
+    assert.equal(state.mutations.length, 0);
+  }
+});
+
+test('release metadata cannot be renamed, removed or added from another path', async () => {
+  for (const status of ['renamed', 'removed', 'added']) {
+    const { state, args } = fixture();
+    state.fileStatus = status;
+    await assert.rejects(publishRelease(args), /file operation/);
     assert.equal(state.mutations.length, 0);
   }
 });

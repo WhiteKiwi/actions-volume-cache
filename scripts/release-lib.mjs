@@ -89,8 +89,8 @@ export async function publishRelease({ api, git, repo, sha, version, manifest, c
   const allowed = new Set(['CHANGELOG.md', 'package.json', '.release-please-manifest.json']);
   assert(files.length > 0 && files.length <= 3, 'Release PR must contain only version metadata');
   assert(
-    files.every((file) => allowed.has(file.filename)),
-    'Unexpected release PR file',
+    files.every((file) => allowed.has(file.filename) && file.status === 'modified'),
+    'Unexpected release PR file or file operation',
   );
   const tag = `v${version}`;
   const major = `v${versionParts(version)[0]}`;
