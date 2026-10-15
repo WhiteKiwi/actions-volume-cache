@@ -1,0 +1,62 @@
+name: Negative lifecycle probe
+on:
+  # Run on a distinct diagnostic commit, not the PR head: the intentionally
+  # failed job must not leave a misleading red check on an otherwise green PR.
+  push:
+    branches: [ci/lifecycle-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  expected-failure:
+    name: lifecycle-failure
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare synthetic volume
+        run: |
+          mkdir -p "$RUNNER_TEMP/avc-lifecycle"
+          echo "AVC_LIFECYCLE_VOLUME=$RUNNER_TEMP/avc-lifecycle" >> "$GITHUB_ENV"
+      - name: Observe post-job result
+        uses: ./tests/fixtures/post-observer
+        with:
+          expected: absent
+      - name: Volume cache
+        uses: ./
+        with:
+          path: .cache/lifecycle-target
+          key: lifecycle
+          volume-path: ${{ env.AVC_LIFECYCLE_VOLUME }}
+      - name: Create build output
+        run: |
+          mkdir -p .cache/lifecycle-target
+          printf 'lifecycle-data' > .cache/lifecycle-target/value
+      - name: Expected failure
+        run: exit 7
+
+  gate:
+    if: always()
+    needs: expected-failure
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify failed job skipped saving and observer passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          const { jobs } = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/jobs.json`, 'utf8'));
+          const failure = jobs.find(job => job.name === 'lifecycle-failure');
+          assert.equal(failure?.steps.find(step => step.name === 'Expected failure')?.conclusion, 'failure');
+          assert.equal(failure?.steps.find(step => step.name === 'Post Observe post-job result')?.conclusion, 'success');
+          assert.ok(!failure.steps.some(step => step.name === 'Post Volume cache' && step.conclusion === 'success'));
+          console.log('Failed-job save suppression verified on the actual GitHub runner');
+          JS

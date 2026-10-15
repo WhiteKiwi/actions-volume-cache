@@ -251,7 +251,7 @@ cache miss to bypass validation.
 - Automatic branch isolation or a guarantee of cross-job filesystem isolation.
 - Full option and behavior parity with `actions/cache`.
 
-## 10. Engineering decisions remaining
+## 10. Engineering review points
 
 Resolve these without changing the agreed behavior silently:
 

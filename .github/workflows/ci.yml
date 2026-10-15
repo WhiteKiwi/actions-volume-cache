@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   test:
@@ -28,13 +27,8 @@ jobs:
         run: git diff --exit-code -- dist
 
   lifecycle:
-    name: lifecycle-${{ matrix.scenario }}
+    name: lifecycle-success
     runs-on: ubuntu-24.04
-    continue-on-error: ${{ matrix.scenario == 'failure' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        scenario: [success, failure]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare synthetic volume
@@ -42,11 +36,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/avc-lifecycle"
           echo "AVC_LIFECYCLE_VOLUME=$RUNNER_TEMP/avc-lifecycle" >> "$GITHUB_ENV"
       # Post steps run in reverse registration order. The observer verifies the
-      # cache after its save post step would have run, including on job failure.
+      # cache after its save post step has run.
       - name: Observe post-job result
         uses: ./tests/fixtures/post-observer
         with:
-          expected: ${{ matrix.scenario == 'success' && 'saved' || 'absent' }}
+          expected: saved
       - name: Volume cache
         id: cache
         uses: ./
@@ -61,33 +55,3 @@ jobs:
           test -z "$CACHE_HIT"
           mkdir -p .cache/lifecycle-target
           printf 'lifecycle-data' > .cache/lifecycle-target/value
-      - name: Expected failure
-        if: matrix.scenario == 'failure'
-        run: exit 7
-
-  lifecycle-gate:
-    if: always()
-    needs: [test, lifecycle]
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Verify positive and negative lifecycle evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-          SOURCE_RESULT: ${{ needs.test.result }}
-        run: |
-          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
-          node --input-type=module <<'JS'
-          import assert from 'node:assert/strict';
-          import fs from 'node:fs';
-          assert.equal(process.env.SOURCE_RESULT, 'success');
-          const { jobs } = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/jobs.json`, 'utf8'));
-          const success = jobs.find(job => job.name === 'lifecycle-success');
-          const failure = jobs.find(job => job.name === 'lifecycle-failure');
-          assert.equal(success?.conclusion, 'success');
-          assert.equal(failure?.steps.find(step => step.name === 'Expected failure')?.conclusion, 'failure');
-          assert.equal(failure?.steps.find(step => step.name === 'Post Observe post-job result')?.conclusion, 'success');
-          assert.ok(!failure.steps.some(step => step.name === 'Post Volume cache' && step.conclusion === 'success'));
-          console.log('Both real GitHub main/post lifecycle scenarios verified');
-          JS

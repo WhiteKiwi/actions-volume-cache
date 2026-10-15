@@ -31,8 +31,11 @@ live only in `.cache/tests`, and the pnpm store is local to `.cache/pnpm-store`.
 Use `pnpm exec prettier --write .` to format source/configuration/docs. Generated
 bundles and lockfiles are excluded from formatting. The CI workflow verifies
 reproducible bundles, local acceptance tests, and real GitHub post-job lifecycle
-behavior using a test-only post observer. Its expected-failure matrix job is
-checked by a gate so an observer failure cannot silently pass as an expected failure.
+behavior using a test-only post observer. The expected-failure probe is a separate
+workflow, checked by a gate so observer errors cannot pass as expected failures.
+Run that probe on a separate diagnostic commit/branch (or manually after merging
+the workflow); intentional failure checks must not be attached to the PR head.
+The diagnostic commit can have the exact same tree as the reviewed commit.
 
 The design for the initial implementation is in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
