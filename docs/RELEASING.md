@@ -57,7 +57,8 @@ individual jobs declare the write permissions they need.
 
 The publish job needs contents write and read access to CI/PR records. Only the
 proposal job receives Actions write to dispatch bot-PR CI. Release completion
-receives Issues write for its two release labels. Ordinary CI and downloaded
+receives Pull requests write for its two release labels (Issues write alone does
+not authorize labeling a PR with this token). Ordinary CI and downloaded
 consumer checks keep read-only contents access. The release-PR CI reporter gets
 only Statuses write, checks out no code, and reports the aggregate native test
 and lifecycle results on the tested commit.
@@ -101,6 +102,17 @@ and newer aliases instead of overwriting them. After a partial failure, a fixed
 release may already exist; inspect the job summary and refs before recovery.
 A failed post-publication verification leaves the release pending and stops the
 next proposal. No automatic rollback or deletion of a published release occurs.
+
+If GitHub rejects tag creation with `403` because the tested source has different
+workflow files from current main, `GITHUB_TOKEN` cannot gain the required
+Workflows write scope. Do not add a broad PAT to CI to bypass this restriction.
+A maintainer with existing workflow-authorized Git credentials must first verify
+that exact source CI, publish the unchanged fixed tag/release, and advance its
+major alias using a targeted lease. Then resume **Release** with the original CI
+run ID to perform public-action verification, label completion, and Marketplace
+checking. This is an exceptional historical-commit recovery path; normal releases
+target the newly tested main merge commit. Never retarget an exact release tag
+to a different commit to make recovery pass.
 
 For an independent observation, run **Verify published action** and provide the
 major tag and optional expected full commit SHA. It uses synthetic temporary
