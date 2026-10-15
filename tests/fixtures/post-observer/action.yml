@@ -1,0 +1,11 @@
+name: Lifecycle test observer
+description: Test-only observer that runs after the cache action's post step
+inputs:
+  expected:
+    required: true
+    description: Whether the cache should be saved or absent
+runs:
+  using: node24
+  main: register.mjs
+  post: verify.mjs
+  post-if: always()

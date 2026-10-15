@@ -1,0 +1,93 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Install pnpm locally
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pnpm" pnpm@11.25.0
+          echo "$RUNNER_TEMP/pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm exec prettier --check .
+      - name: Verify reproducible distributables
+        run: git diff --exit-code -- dist
+
+  lifecycle:
+    name: lifecycle-${{ matrix.scenario }}
+    runs-on: ubuntu-24.04
+    continue-on-error: ${{ matrix.scenario == 'failure' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [success, failure]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare synthetic volume
+        run: |
+          mkdir -p "$RUNNER_TEMP/avc-lifecycle"
+          echo "AVC_LIFECYCLE_VOLUME=$RUNNER_TEMP/avc-lifecycle" >> "$GITHUB_ENV"
+      # Post steps run in reverse registration order. The observer verifies the
+      # cache after its save post step would have run, including on job failure.
+      - name: Observe post-job result
+        uses: ./tests/fixtures/post-observer
+        with:
+          expected: ${{ matrix.scenario == 'success' && 'saved' || 'absent' }}
+      - name: Volume cache
+        id: cache
+        uses: ./
+        with:
+          path: .cache/lifecycle-target
+          key: lifecycle
+          volume-path: ${{ env.AVC_LIFECYCLE_VOLUME }}
+      - name: Verify cold miss and create build output
+        env:
+          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: |
+          test -z "$CACHE_HIT"
+          mkdir -p .cache/lifecycle-target
+          printf 'lifecycle-data' > .cache/lifecycle-target/value
+      - name: Expected failure
+        if: matrix.scenario == 'failure'
+        run: exit 7
+
+  lifecycle-gate:
+    if: always()
+    needs: [test, lifecycle]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify positive and negative lifecycle evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_RESULT: ${{ needs.test.result }}
+        run: |
+          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          assert.equal(process.env.SOURCE_RESULT, 'success');
+          const { jobs } = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/jobs.json`, 'utf8'));
+          const success = jobs.find(job => job.name === 'lifecycle-success');
+          const failure = jobs.find(job => job.name === 'lifecycle-failure');
+          assert.equal(success?.conclusion, 'success');
+          assert.equal(failure?.steps.find(step => step.name === 'Expected failure')?.conclusion, 'failure');
+          assert.equal(failure?.steps.find(step => step.name === 'Post Observe post-job result')?.conclusion, 'success');
+          assert.ok(!failure.steps.some(step => step.name === 'Post Volume cache' && step.conclusion === 'success'));
+          console.log('Both real GitHub main/post lifecycle scenarios verified');
+          JS

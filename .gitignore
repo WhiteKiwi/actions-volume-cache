@@ -11,3 +11,6 @@
 # Editor and operating-system files.
 .DS_Store
 *.swp
+
+node_modules/
+*.tsbuildinfo

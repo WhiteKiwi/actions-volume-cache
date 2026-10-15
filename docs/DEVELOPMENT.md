@@ -2,14 +2,39 @@
 
 ## Current state
 
-Only documentation exists. There is no action manifest, implementation,
-dependency manifest, build command, test runner, distributable, or release.
-The `@v1` examples describe the planned interface, not a published artifact.
+An initial implementation exists. There is no tagged release; replace `@v1` in
+examples with a reviewed commit SHA for evaluation. Live ARC adoption and
+representative performance measurements remain separate tasks.
 
 Read [SPEC.md](SPEC.md) for the agreed behavior and [TESTING.md](TESTING.md) for
 acceptance scenarios. [AGENTS.md](../AGENTS.md) contains repository instructions
 for agents. Product requirements belong in the specification, not only in
 agent-specific guidance.
+
+## Tooling and commands
+
+Use Node 24, pnpm 11.25.0, and Linux with util-linux `flock`.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm exec prettier --check .
+```
+
+`pnpm check` runs typechecking and `pnpm test`; tests rebuild bundles first.
+`pnpm build` bundles main/post using esbuild. Distributables include runtime
+dependencies and must be committed. Tests use Node's test runner plus tsx; fixtures
+live only in `.cache/tests`, and the pnpm store is local to `.cache/pnpm-store`.
+
+Use `pnpm exec prettier --write .` to format source/configuration/docs. Generated
+bundles and lockfiles are excluded from formatting. The CI workflow verifies
+reproducible bundles, local acceptance tests, and real GitHub post-job lifecycle
+behavior using a test-only post observer. Its expected-failure matrix job is
+checked by a gate so an observer failure cannot silently pass as an expected failure.
+
+The design for the initial implementation is in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## Suggested implementation sequence
 
@@ -61,8 +86,8 @@ Do not mark acceptance scenarios passed based only on a design or source review.
 
 For documentation-only work, use the current checkout's available tools to check
 relative links, code fences, option names, whitespace, and the actual Git diff.
-There are no established executable test commands yet. Add exact commands here
-when introducing the chosen tooling instead of documenting speculative commands.
+Use the commands above for implementation changes. A source check, local test,
+real GitHub lifecycle run, and live ARC deployment are distinct evidence.
 
 Do not add a release tag, change repository visibility, select a license, install
 software, modify live CI workflows, or create a schedule as a side effect of

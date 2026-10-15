@@ -1,10 +1,11 @@
 # Specification
 
-Status: agreed requirements, implementation pending. Baseline: 2026-10-15.
+Status: agreed requirements with an initial implementation. Baseline: 2026-10-15.
 
 This document is the product contract for the first implementation. Requirements
-below are decisions, not claims of implemented behavior. Open engineering choices
-are listed at the end and must be resolved explicitly in implementation design.
+below are decisions. [IMPLEMENTATION.md](IMPLEMENTATION.md) records engineering
+choices and support limits; [TESTING.md](TESTING.md) separates acceptance goals
+from the evidence currently available.
 
 ## 1. Purpose and support boundary
 
@@ -29,31 +30,30 @@ initial contract. There is no background cleanup service or scheduler installati
 
 ### Inputs
 
-| Name | Required | Default | Contract |
-| --- | --- | --- | --- |
-| `path` | Yes | None | Nonempty multiline list of files, directories, or glob patterns; `!` patterns exclude matches. |
-| `key` | Yes | None | Nonempty primary lookup key and destination key for updates. |
-| `restore-keys` | No | Empty | Ordered multiline fallback keys/prefixes; no data from a candidate means continue searching. |
-| `volume-path` | Yes | None | Persistent cache volume path visible inside the runner. |
-| `auto-cleanup` | No | `true` | Enable age-based cleanup during action execution. |
-| `cleanup-retention-days` | No | `7` | Retention since the last successful restore or save, in days. |
-| `max-cache-size` | No | Unset | Aggregate budget for this action's managed caches; `100GiB` is an intended value. Over-budget saves are rejected. |
+| Name                     | Required | Default | Contract                                                                                                          |
+| ------------------------ | -------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `path`                   | Yes      | None    | Nonempty multiline list of files, directories, or glob patterns; `!` patterns exclude matches.                    |
+| `key`                    | Yes      | None    | Nonempty primary lookup key and destination key for updates.                                                      |
+| `restore-keys`           | No       | Empty   | Ordered multiline fallback keys/prefixes; no data from a candidate means continue searching.                      |
+| `volume-path`            | Yes      | None    | Persistent cache volume path visible inside the runner.                                                           |
+| `auto-cleanup`           | No       | `true`  | Enable age-based cleanup during action execution.                                                                 |
+| `cleanup-retention-days` | No       | `7`     | Retention since the last successful restore or save, in days.                                                     |
+| `max-cache-size`         | No       | Unset   | Aggregate budget for this action's managed caches; `100GiB` is an intended value. Over-budget saves are rejected. |
 
 Further optional inputs from `actions/cache`, including `lookup-only`,
-`fail-on-cache-miss`, and cross-OS archive controls, are not part of the agreed
-initial interface. Value grammars and parsing edge cases still need an
-implementation decision; this specification does not invent accepted size units
-or numeric ranges beyond the decisions above.
+`fail-on-cache-miss`, and cross-OS archive controls, are not in the initial
+interface. Parsing ranges and accepted size units are documented in the
+implementation design.
 
 ### Output
 
 Expose only `cache-hit`. GitHub step outputs are strings.
 
-| Value | Meaning |
-| --- | --- |
-| `'true'` | Every requested cache unit was successfully restored using the exact primary `key`. |
-| `'false'` | At least one unit was restored, but another was missing or used a fallback key. |
-| `''` | No units were successfully restored, including a cold miss or recoverable restore failures. |
+| Value     | Meaning                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------- |
+| `'true'`  | Every requested cache unit was successfully restored using the exact primary `key`.         |
+| `'false'` | At least one unit was restored, but another was missing or used a fallback key.             |
+| `''`      | No units were successfully restored, including a cold miss or recoverable restore failures. |
 
 An exact hit does not skip saving. The output describes restoration, not build
 correctness or whether future steps should run. Do not add matched-key,
@@ -226,14 +226,14 @@ when jobs use conflicting budget/retention settings in the implementation design
 
 ## 8. Error policy
 
-| Condition | Behavior |
-| --- | --- |
-| Missing required input or unsafe path | Fail the action. |
-| Cold miss or no existing destination | Continue without cached data. |
-| Unusable candidate | Warn, try remaining compatible candidates. |
-| No usable candidate | Continue without restored data. |
-| Empty save selection | Warn, skip saving, preserve the old entry. |
-| Capacity or cache I/O failure | Warn, preserve committed data, continue the job. |
+| Condition                             | Behavior                                         |
+| ------------------------------------- | ------------------------------------------------ |
+| Missing required input or unsafe path | Fail the action.                                 |
+| Cold miss or no existing destination  | Continue without cached data.                    |
+| Unusable candidate                    | Warn, try remaining compatible candidates.       |
+| No usable candidate                   | Continue without restored data.                  |
+| Empty save selection                  | Warn, skip saving, preserve the old entry.       |
+| Capacity or cache I/O failure         | Warn, preserve committed data, continue the job. |
 
 Warnings should identify the operation and affected logical key/path without
 dumping file contents, credentials, environment variables, or unbounded metadata.
@@ -265,8 +265,10 @@ Resolve these without changing the agreed behavior silently:
 6. Link/type-collision handling, permission edge cases, and unsupported filesystem objects.
 7. Host mount permissions, supported filesystem guarantees, and trusted-job deployment policy.
 
-The acceptance plan is in [TESTING.md](TESTING.md). No implementation, runtime
-compatibility, performance result, or live deployment is verified yet.
+The initial engineering choices for these areas are recorded in
+[IMPLEMENTATION.md](IMPLEMENTATION.md). They remain review points for future
+changes, not unspecified behavior to decide silently. The acceptance plan is in
+[TESTING.md](TESTING.md); performance and live ARC deployment remain unqualified.
 
 ## References
 

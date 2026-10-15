@@ -2,11 +2,13 @@
 
 Uncompressed, key-based local caches for Linux GitHub Actions self-hosted runners.
 
-**Status: specification only.** The agreed behavior is documented, but there is
-no executable action, release, or validated cache implementation yet. Examples
-below describe the planned interface; `@v1` is not an available release.
+**Status: initial implementation.** Source, bundled JavaScript, local tests, and
+GitHub lifecycle CI are included. There is no tagged release yet; `@v1` below is
+an intended release reference, not an available tag. Use a reviewed commit SHA
+when evaluating the implementation. ARC deployment and performance qualification
+are separate from the source and lifecycle checks.
 
-## What it will do
+## What it does
 
 1. Find local cache entries using `key`, then ordered `restore-keys`.
 2. Copy cached data into the requested job paths without creating or extracting archives.
@@ -21,13 +23,18 @@ Linux self-hosted runners are the support target. ARC on K3s is the first
 integration environment, not a required platform. The initial CI environment
 provides 1 CPU / 2 GB per runner without Docker; repositories choose their own tools.
 
-## Planned usage
+## Usage
 
-The operator must mount a persistent, writable volume at the same runner-visible
-path for jobs that should share caches. This action will not provision or mount it.
+Requirements: a Linux runner supporting `node24`, the util-linux `flock` command,
+and a persistent, writable local filesystem supporting flock and atomic rename.
+Use the canonical absolute mount path. NFS/SMB and hostile jobs sharing writable
+storage are not supported by this first implementation.
+
+The operator must mount the volume at the same runner-visible path for jobs that
+should share caches. This action does not provision or mount it and needs no Docker.
 
 ```yaml
-# Planned interface only; no v1 release exists yet.
+# Replace @v1 with a reviewed commit SHA until a release is tagged.
 - name: Restore and update local build cache
   id: local-cache
   uses: WhiteKiwi/actions-volume-cache@v1
@@ -51,15 +58,15 @@ setup. Adapt paths, compatibility keys, and the build command to the repository.
 
 ## Inputs
 
-| Input | Required | Default | Meaning |
-| --- | --- | --- | --- |
-| `path` | Yes | None | Files or directories to restore and save; multiline and glob/exclusion patterns supported. |
-| `key` | Yes | None | Primary lookup key and destination key for successful saves. |
-| `restore-keys` | No | Empty | Ordered fallback keys/prefixes. |
-| `volume-path` | Yes | None | Persistent volume path visible inside the runner. |
-| `auto-cleanup` | No | `true` | Run age-based cleanup during action execution. |
-| `cleanup-retention-days` | No | `7` | Remove entries unused since their last successful restore or save for this many days. |
-| `max-cache-size` | No | Unset: no limit | Aggregate managed-cache budget; for example `100GiB`. Over-budget saves fail without evicting other entries. |
+| Input                    | Required | Default         | Meaning                                                                                                      |
+| ------------------------ | -------- | --------------- | ------------------------------------------------------------------------------------------------------------ |
+| `path`                   | Yes      | None            | Files or directories to restore and save; multiline and glob/exclusion patterns supported.                   |
+| `key`                    | Yes      | None            | Primary lookup key and destination key for successful saves.                                                 |
+| `restore-keys`           | No       | Empty           | Ordered fallback keys/prefixes.                                                                              |
+| `volume-path`            | Yes      | None            | Persistent volume path visible inside the runner.                                                            |
+| `auto-cleanup`           | No       | `true`          | Run age-based cleanup during action execution.                                                               |
+| `cleanup-retention-days` | No       | `7`             | Remove entries unused since their last successful restore or save for this many days.                        |
+| `max-cache-size`         | No       | Unset: no limit | Aggregate managed-cache budget; for example `100GiB`. Over-budget saves fail without evicting other entries. |
 
 ## Output
 
@@ -103,9 +110,37 @@ copies are uncompressed; exact-key entries are mutable; matching is per path;
 branch scope is controlled through keys. There are no separate restore/save
 actions or automatic GitHub-service fallback in the agreed initial scope.
 
+## Implementation and verification
+
+The action is written in TypeScript and bundled for Node 24. Consumers do not run
+pnpm or build TypeScript. Main restores; GitHub runs post-job saving only on job
+success. A volume-wide kernel lock covers cache I/O, publication, accounting,
+and cleanup; it is released before the build runs. This first version serializes
+cache operations to prioritize correctness and does not claim parallel cache-I/O
+throughput or power-loss durability.
+
+Restore uses prepared copies and a rollback journal. Recoverable merge failures
+roll back; an unrecoverable journal/rollback error fails the action instead of
+allowing a partially restored workspace to proceed. A later invocation to the
+same path recovers an interrupted merge before attempting any hit or miss.
+
+For development with Node 24 and pnpm 11.25.0:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm check
+pnpm exec prettier --check .
+```
+
+`pnpm check` type-checks, builds the distributables, and runs functional,
+multi-process, process-death, and standalone bundle tests. The CI workflow also
+checks real successful/failed GitHub job main/post behavior and reproducible
+distributables. See the acceptance plan for coverage and remaining qualification.
+
 ## Documentation
 
-- [Specification and decisions still to resolve](docs/SPEC.md)
+- [Specification](docs/SPEC.md)
+- [Implementation design and support limits](docs/IMPLEMENTATION.md)
 - [Development workflow and implementation plan](docs/DEVELOPMENT.md)
 - [Acceptance and verification plan](docs/TESTING.md)
 - [Repository instructions for agents](AGENTS.md)
