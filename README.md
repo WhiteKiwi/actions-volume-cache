@@ -25,13 +25,15 @@ provides 1 CPU / 2 GB per runner without Docker; repositories choose their own t
 
 ## Usage
 
-Requirements: a Linux runner supporting `node24`, the util-linux `flock` command,
-and a persistent, writable local filesystem supporting flock and atomic rename.
+Requirements: a Linux x64 or arm64 runner supporting `node24` and a persistent,
+writable local filesystem supporting flock and atomic rename.
 Use the canonical absolute mount path. NFS/SMB and hostile jobs sharing writable
 storage are not supported by this first implementation.
 
 The operator must mount the volume at the same runner-visible path for jobs that
 should share caches. This action does not provision or mount it and needs no Docker.
+The action includes native lock helpers for both architectures. Consumers do not
+install `flock`, Go, a compiler, or packages and need no sudo for the action.
 
 ```yaml
 # Replace @v1 with a reviewed commit SHA until a release is tagged.
@@ -112,19 +114,31 @@ actions or automatic GitHub-service fallback in the agreed initial scope.
 
 ## Implementation and verification
 
-The action is written in TypeScript and bundled for Node 24. Consumers do not run
-pnpm or build TypeScript. Main restores; GitHub runs post-job saving only on job
-success. A volume-wide kernel lock covers cache I/O, publication, accounting,
-and cleanup; it is released before the build runs. This first version serializes
-cache operations to prioritize correctness and does not claim parallel cache-I/O
-throughput or power-loss durability.
+The action is written in TypeScript and bundled for Node 24, with a small static
+Go executable for kernel locks. Main restores; GitHub runs post-job saving only
+on job success. Readers share a lock for the actual repository/key/path entry.
+Publication and cleanup take an exclusive lock for that entry. Different entries
+can copy data concurrently; a brief metadata lock coordinates catalog reads,
+timestamps, aggregate size admission, and pointer publication. Payload copies
+and recursive deletion happen outside that metadata lock.
+
+A workspace lock protects restore recovery and overlapping action operations in
+the same workspace. All locks are released before the build runs. Jobs must use
+private destination paths, including any home-directory cache paths; this action
+does not isolate destinations that jobs deliberately share. No cache throughput
+or power-loss durability claim is made.
+
+The new lock protocol uses `actions-volume-cache/v2`. Previous `v1` data stays
+untouched and is a cold miss for this implementation. It is outside v2 cleanup
+and `max-cache-size` accounting but still occupies disk space. Existing v1 clients
+can keep using their separate subtree; this is not an automatic data migration.
 
 Restore uses prepared copies and a rollback journal. Recoverable merge failures
 roll back; an unrecoverable journal/rollback error fails the action instead of
 allowing a partially restored workspace to proceed. A later invocation to the
 same path recovers an interrupted merge before attempting any hit or miss.
 
-For development with Node 24 and pnpm 11.25.0:
+For development with Node 24, pnpm 11.25.0, and Go 1.27.2:
 
 ```sh
 pnpm install --frozen-lockfile

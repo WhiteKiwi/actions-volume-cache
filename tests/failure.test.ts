@@ -51,9 +51,9 @@ test('automatic cleanup disabled retains expired entries and abandoned staging',
     await save(f.options);
     const store = new Store(f.options, f.reporter);
     let staging = '';
-    await store.locked(async () => {
-      staging = await store.staging();
-    });
+    const abandoned = await store.staging();
+    staging = abandoned.directory;
+    await abandoned.release();
     await f.reset();
     assert.equal(await restore({ ...f.options, retentionDays: 0.000000001 }), 'true');
     assert.ok((await fs.stat(staging)).isDirectory());

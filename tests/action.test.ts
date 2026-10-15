@@ -40,17 +40,20 @@ test('packaged main/post handshake works without node_modules at execution time'
   const f = await fixture();
   try {
     // Copy only distributables to demonstrate runtime dependencies are bundled.
-    const bundle = path.join(f.root, 'standalone');
-    await fs.mkdir(bundle);
-    await fs.writeFile(path.join(bundle, 'package.json'), '{"type":"module"}');
-    await fs.copyFile(main, path.join(bundle, 'main.js'));
-    await fs.copyFile(post, path.join(bundle, 'post.js'));
+    const standalone = path.join(f.root, 'standalone');
+    const bundle = path.join(standalone, 'dist');
+    await fs.mkdir(standalone);
+    await fs.writeFile(path.join(standalone, 'package.json'), '{"type":"module"}');
+    await fs.cp(path.resolve('dist'), bundle, { recursive: true });
+    const emptyPath = path.join(f.root, 'empty-path');
+    await fs.mkdir(emptyPath);
     const state = path.join(f.root, 'state');
     const output = path.join(f.root, 'output');
     await fs.writeFile(state, '');
     await fs.writeFile(output, '');
     const env = {
       ...process.env,
+      PATH: emptyPath,
       GITHUB_REPOSITORY_ID: f.options.repository,
       GITHUB_WORKSPACE: f.options.workspace,
       HOME: f.options.home,
