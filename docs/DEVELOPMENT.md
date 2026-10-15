@@ -2,9 +2,10 @@
 
 ## Current state
 
-An initial implementation exists. The README and copyable example workflows pin
-a tested commit SHA; there is no tagged release yet. Live ARC adoption and
-representative performance measurements remain separate tasks.
+The v1 action uses committed distributables and semantic release tags. Public
+examples use the moving `v1` tag; exact releases such as `v1.0.0` remain fixed.
+Follow [RELEASING.md](RELEASING.md) for release verification and tag updates.
+Live ARC adoption and representative performance measurements remain separate tasks.
 
 Read [SPEC.md](SPEC.md) for the agreed behavior and [TESTING.md](TESTING.md) for
 acceptance scenarios. [AGENTS.md](../AGENTS.md) contains repository instructions
@@ -103,11 +104,13 @@ Copyable workflows live in `examples/`; the README quick-start YAML must match
 `examples/npm.yml`. Keep their prerequisites and runner-selection comments clear.
 These are consumer templates, not additional workflows deployed in this repo.
 
-Pin examples to an existing reviewed commit with passing CI. Update every example
-reference together when deliberately choosing a newer baseline. Do not substitute
-an uncreated release tag or pin to an untested documentation commit. Keep third-party
-action references pinned as well. Distinguish a cache storage-format version from
-an action release tag, and do not infer a project license from a bundled runtime notice.
+Use readable major tags in public quick-start examples, including third-party
+actions, and explain fixed versions/full SHA pinning in the usage guide. Update
+all examples together when a major version changes. Repository CI may keep full
+SHA pins for reproducibility. Do not document an uncreated tag unless the same
+authorized release task creates and verifies it before completion. Distinguish
+a cache storage-format version from an action release tag, and do not infer a
+project license from a bundled runtime notice.
 
 For documentation-only work, use the current checkout's available tools to check
 relative links, code fences, option names, whitespace, and the actual Git diff.

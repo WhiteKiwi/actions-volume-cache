@@ -13,7 +13,7 @@ jobs:
     env:
       CARGO_HOME: ${{ github.workspace }}/.cache/cargo
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - name: Select and identify Rust toolchain
         id: rust
         run: |
@@ -21,7 +21,7 @@ jobs:
           echo "version=$(rustc +stable --version)" >> "$GITHUB_OUTPUT"
       - name: Restore and update Cargo cache
         id: local-cache
-        uses: WhiteKiwi/actions-volume-cache@b8b00a6601529c337a7f70b82a6dc7ad10c7519d
+        uses: WhiteKiwi/actions-volume-cache@v1
         with:
           volume-path: /cache
           # Omit paths your project never creates; missing units make cache-hit 'false'.

@@ -1,0 +1,39 @@
+name: Verify published v1
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  published-action:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare synthetic volume
+        run: |
+          mkdir -p "$RUNNER_TEMP/avc-release"
+          echo "AVC_LIFECYCLE_VOLUME=$RUNNER_TEMP/avc-release" >> "$GITHUB_ENV"
+      # The observer's post runs after the published action's save post.
+      - name: Observe published action save
+        uses: ./tests/fixtures/post-observer
+        with:
+          expected: saved
+      - name: Use published v1
+        id: cache
+        uses: WhiteKiwi/actions-volume-cache@v1
+        with:
+          path: .cache/lifecycle-target
+          key: lifecycle
+          volume-path: ${{ env.AVC_LIFECYCLE_VOLUME }}
+      - name: Verify cold miss and create output
+        env:
+          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: |
+          test -z "$CACHE_HIT"
+          mkdir -p .cache/lifecycle-target
+          printf 'lifecycle-data' > .cache/lifecycle-target/value
