@@ -90,6 +90,11 @@ close together. If a release remains pending, or an API/verification step fails,
 use **Release → Run workflow** on `main` and supply the successful main-push CI
 run ID for the release merge commit. Do not supply a PR run or a dispatch run.
 
+Recovery runs use the current workflow controller commit; package version,
+manifest, CHANGELOG, and published tags still come from the exact tested source
+commit. The REST client pins the 2022-11-28 response contract used to verify the
+release PR merge SHA.
+
 The workflow rechecks the retained CI run, reuses matching tags/releases, and
 retries major advancement and public verification. It rejects conflicting tags
 and newer aliases instead of overwriting them. After a partial failure, a fixed
