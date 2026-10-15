@@ -39,6 +39,9 @@ descendants beneath missing/corrupt parents, and recovery before glob expansion
 after both a leaf backup and a nested file replacement. The five source-level
 regression cases also fail against the pre-fix PR source. Directory aliases below
 trusted roots remain rejected; unknown transaction-like directories are preserved.
+Corrupt-pointer cleanup removes abandoned UUID-named pointer-write temporaries
+while preserving the corrupt pointer, all generations, and unknown filenames;
+disabling automatic cleanup preserves those temporary files as well.
 
 Use synthetic data in disposable directories. A local filesystem experiment
 is not evidence that the complete action works. Test the main/post-job lifecycle
