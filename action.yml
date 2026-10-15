@@ -1,5 +1,6 @@
-name: Volume Cache
-description: Restore and update uncompressed caches on a persistent local volume
+name: Actions Volume Cache
+description: Restore and update local-volume caches for Linux self-hosted runners
+author: WhiteKiwi
 inputs:
   path:
     description: Files, directories, and glob/exclusion patterns to cache

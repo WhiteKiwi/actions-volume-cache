@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.0.1 — 2026-10-15
+
+- License the project under MIT and retain bundled third-party notices.
+- Prepare the Actions Volume Cache Marketplace metadata and repository identity.
+- Improve the README, contribution guide, security policy, and issue templates.
+
+The cache engine, inputs, output, storage format, and committed executables are
+unchanged from v1.0.0.
+
 ## v1.0.0 — 2026-10-15
 
 First versioned GitHub Actions release.

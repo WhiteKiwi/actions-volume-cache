@@ -1,6 +1,6 @@
 {
   "name": "actions-volume-cache",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Uncompressed local-volume caches for GitHub Actions",
   "type": "module",
@@ -25,5 +25,15 @@
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "license": "MIT",
+  "author": "Jihoon Jang",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WhiteKiwi/actions-volume-cache.git"
+  },
+  "homepage": "https://github.com/WhiteKiwi/actions-volume-cache#readme",
+  "bugs": {
+    "url": "https://github.com/WhiteKiwi/actions-volume-cache/issues"
   }
 }

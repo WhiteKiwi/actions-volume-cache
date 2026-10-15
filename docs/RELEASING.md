@@ -104,3 +104,25 @@ gh release view v1.0.0
 A draft, a local-only tag, or a pending CI run is not a completed release. Keep
 the release commit, tag targets, CI URLs, and final publication receipt with the
 task's verification record.
+
+## Marketplace listing
+
+Use the public display name and branding in `action.yml`. Keep the listing
+focused on local-volume caching for Linux self-hosted runners, and retain the
+persistent-mount and trusted-job requirements in the README. Check name
+availability in GitHub's release form rather than assuming it is unique.
+
+The project uses the root MIT license. Preserve bundled third-party notices.
+A release containing license or listing changes still follows the exact-commit
+checks above; do not rewrite an older tag to add them.
+
+When publishing a release, select **Publish this release to the GitHub
+Marketplace** and choose **Dependency management** as the primary category and
+**Continuous integration** as the secondary category, when offered. Validate
+metadata in the release form and verify the resulting public listing and version.
+A normal CLI-created GitHub Release does not by itself prove Marketplace publication.
+
+The account owner must accept GitHub's Marketplace Developer Agreement before
+first publication. Acceptance is a separate legal commitment and requires the
+owner's confirmation; repository edits do not accept it. Follow GitHub's
+[publishing instructions](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/publish-in-github-marketplace).
