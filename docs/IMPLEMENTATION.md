@@ -141,7 +141,9 @@ and metadata, it detaches eligible data by rename into owned garbage; it release
 both locks before recursively deleting that data. It removes expired entries and,
 when enabled, abandoned cache staging, unreferenced generations, entries without
 a committed pointer, and interrupted pointer-write temporary files. Preserve
-corrupt pointers whose referenced generation cannot be determined safely.
+corrupt pointers whose referenced generation cannot be determined safely, along
+with all their generations. UUID-named temporary pointer writes are still
+reclaimed in those entries; their ownership does not depend on a valid pointer.
 Publication failures quarantine and attempt to remove the unpublished generation
 immediately, even when automatic cleanup is disabled. If that removal fails or
 the process is killed, a later enabled cleanup claims its abandoned operation

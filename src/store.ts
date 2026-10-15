@@ -426,21 +426,23 @@ export class Store {
         await this.locked(async () => {
           if (!(await statOptional(info.directory))) return;
           const record = await this.read(info);
-          if (!record) {
-            if (!(await statOptional(path.join(info.directory, 'current.json'))))
-              await this.quarantine(info.directory, pending);
-            return; // Preserve corrupt pointers whose referenced generation is unknown.
+          if (!record && !(await statOptional(path.join(info.directory, 'current.json')))) {
+            await this.quarantine(info.directory, pending);
+            return;
           }
-          if (record.entry.lastUsedAt <= cutoff) {
+          if (record && record.entry.lastUsedAt <= cutoff) {
             await this.quarantine(record.directory, pending);
             this.report.info(`Removed expired cache ${record.entry.key} (${record.entry.path})`);
             return;
           }
-          for (const name of await fs.readdir(record.directory)) {
+          for (const name of await fs.readdir(info.directory)) {
             const temporary = /^current\.json\.(.+)\.tmp$/.exec(name);
             if (temporary && UUID.test(temporary[1]!))
-              await this.quarantine(path.join(record.directory, name), pending);
+              await this.quarantine(path.join(info.directory, name), pending);
           }
+          // Temporary pointer writes are safe to reclaim even when the current
+          // pointer is corrupt. Preserve that pointer and all unknown generations.
+          if (!record) return;
           const parent = path.join(record.directory, 'generations');
           await noSymlinkAncestors(parent, true);
           if (!(await statOptional(parent))) return;
