@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const entry = path.join(
   process.env.AVC_LIFECYCLE_VOLUME,
-  'actions-volume-cache/v1/repos',
+  'actions-volume-cache/v2/repos',
   process.env.GITHUB_REPOSITORY_ID,
   hash('lifecycle'),
   hash('workspace:.cache/lifecycle-target'),

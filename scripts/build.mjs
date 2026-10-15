@@ -1,4 +1,5 @@
 import { build } from 'esbuild';
+import './build-lock-helper.mjs';
 
 await build({
   entryPoints: ['src/main.ts', 'src/post.ts'],

@@ -10,12 +10,20 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.2'
+          cache: false
       - name: Install pnpm locally
         run: |
           npm install --prefix "$RUNNER_TEMP/pnpm" pnpm@11.25.0
@@ -23,12 +31,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm exec prettier --check .
+      - name: Verify Go formatting
+        run: test -z "$(gofmt -l lock-helper)"
       - name: Verify reproducible distributables
         run: git diff --exit-code -- dist
 
   lifecycle:
-    name: lifecycle-success
-    runs-on: ubuntu-24.04
+    name: lifecycle-success (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare synthetic volume
