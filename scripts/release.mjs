@@ -19,7 +19,8 @@ async function api(method, route, body) {
     headers: {
       Authorization: `Bearer ${process.env.GH_TOKEN}`,
       Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2026-03-10',
+      // Pin the response contract used for merge_commit_sha admission checks.
+      'X-GitHub-Api-Version': '2022-11-28',
       'Content-Type': 'application/json',
     },
     body: body === undefined ? undefined : JSON.stringify(body),
