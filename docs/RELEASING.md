@@ -57,7 +57,8 @@ individual jobs declare the write permissions they need.
 
 The publish job needs contents write and read access to CI/PR records. Only the
 proposal job receives Actions write to dispatch bot-PR CI. Release completion
-receives Issues write for its two release labels. Ordinary CI and downloaded
+receives Pull requests write for its two release labels (Issues write alone does
+not authorize labeling a PR with this token). Ordinary CI and downloaded
 consumer checks keep read-only contents access. The release-PR CI reporter gets
 only Statuses write, checks out no code, and reports the aggregate native test
 and lifecycle results on the tested commit.
