@@ -1,128 +1,125 @@
 # Releasing
 
-This repository publishes a GitHub Action from committed source/distributables.
-It does not publish an npm package. Release/tag operations require explicit
-release authorization; documentation-only edits do not authorize them.
+This repository publishes a GitHub Action from committed source/distributables,
+not an npm package. Release Please prepares version changes; a maintainer merging
+its release PR authorizes publication of that reviewed release. Ordinary main
+commits prepare a proposal and do not immediately release the action.
 
-## Tag policy
+## Normal workflow
 
-- Publish semantic releases using exact tags such as `v1.0.0`.
-- Keep exact release tags fixed. Publish corrections as another version.
-- Use a separate moving major tag such as `v1` for the latest approved compatible
-  release in that series. `v1` is a tag, not a branch.
-- Move the major alias only as part of an approved release, after validation.
-  A new main commit does not automatically move it.
-- Create a new major tag for breaking contract changes. A backport must not move
-  an alias backwards over a newer compatible release.
-- Attach GitHub Releases to exact tags, never to moving aliases. This also keeps
-  the alias movable if immutable GitHub Releases are enabled later.
+1. Merge focused changes into `main` using Conventional Commit squash titles:
+   `fix:` for a patch, `feat:` for a minor, and `feat!:` or `BREAKING CHANGE` for
+   a major. Documentation and maintenance-only commits normally wait for the
+   next releasable change.
+2. After successful main-push **CI**, **Release** runs Release Please in
+   proposal-only mode. It maintains one bot-authored PR on
+   `release-please--branches--main` with the package version, CHANGELOG, and
+   `.release-please-manifest.json` changes.
+3. The workflow explicitly starts **CI** on that bot branch. GitHub suppresses
+   ordinary PR events created with `GITHUB_TOKEN`; `workflow_dispatch` avoids
+   requiring a separate PAT or App key. Inspect the PR's exact head checks.
+4. Review and squash-merge the release PR when ready. Do not add runtime source,
+   workflow, or documentation edits to it; make those changes in ordinary PRs.
+5. Wait for **CI** on the actual main merge commit. Only a successful main-push
+   CI run can authorize publication. PR and manual-dispatch test runs cannot.
+6. **Release** verifies the bot PR identity and metadata, creates the fixed
+   version tag and GitHub Release, and advances the corresponding major tag
+   using a targeted Git lease. It does not rewrite existing fixed releases.
+7. A reusable native x64/arm64 job downloads the public major tag, verifies its
+   full commit SHA, executes that downloaded action, and observes its actual
+   successful-job post save. Only then is the release PR marked
+   `autorelease: tagged` and preparation of the next release allowed.
+8. Check the Marketplace job summary. It independently checks the listing's
+   structured latest-release data. If reflection is missing or cannot be read,
+   it emits a warning and a release-edit link for manual Marketplace publication.
+   Successful GitHub release publication alone is not proof of Marketplace publication.
 
-The initial release provides `v1.0.0` and `v1`. Minor-version aliases are not
-currently published. Public examples use major tags; repository CI keeps its
-separate SHA pins. GitHub's
-[release guidance](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/release-and-maintain-actions)
-and [immutable-release/tag model](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases)
-describe this separation.
+Release workflows never merge or approve the release PR for you. Keep the main
+branch's normal review/merge policy. Do not automate merging the release PR with
+`GITHUB_TOKEN`: that can suppress the main-push CI needed for publication.
 
-## Prepare and verify
+The initial automation starts from the existing `v1.0.1` commit and manifest.
+It does not recreate historical releases. Releases are stable semantic versions;
+prerelease and maintenance-branch publication are outside this initial workflow.
 
-1. Update `package.json` to the release version and add its entry to
-   [CHANGELOG.md](../CHANGELOG.md). Keep the public input/output contract and
-   supported platforms explicit. Update examples for a new major version.
-2. Review the changes through a PR. Follow [DEVELOPMENT.md](DEVELOPMENT.md) for
-   frozen installation, checks, formatting, and committed distributables.
-3. Merge only after native x64/arm64 CI, reproducible distributables, post-job
-   lifecycle checks, and relevant review findings pass.
-4. Fetch main and choose its exact tested commit. Check main CI on that commit,
-   not just an earlier PR head. Inspect `action.yml`, `package.json`, `dist/`,
-   the helper checksum manifest, and executable file modes in that tree.
-5. Confirm the exact tag/release does not already exist. Check existing major
-   aliases and the release history before selecting the next version.
-6. Prepare release-specific notes with the tested commit and CI evidence. State
-   unsupported deployment/performance claims honestly.
+## Repository permissions
 
-## First release
+The workflow uses the repository's short-lived `GITHUB_TOKEN`. There are no new
+PATs, private keys, browser cookies, or external credential services.
 
-After the checks above, from this repository with main fetched and a clean
-working tree:
+Enable **Settings → Actions → General → Allow GitHub Actions to create and
+approve pull requests** so Release Please can open proposals. The workflow does
+not use its ability to approve. Keep default workflow token permissions read-only;
+individual jobs declare the write permissions they need.
+
+The publish job needs contents write and read access to CI/PR records. Only the
+proposal job receives Actions write to dispatch bot-PR CI. Release completion
+receives Issues write for its two release labels. Ordinary CI and downloaded
+consumer checks keep read-only contents access.
+
+## Tag and publication policy
+
+- Publish exact semantic tags such as `v1.0.2` once. Never reuse or move them.
+- Keep a separate major tag, such as `v1`, for compatible releases. The alias is
+  a Git tag, not a branch. No minor-version aliases are currently maintained.
+- Release creation and major advancement run only after native CI on the source
+  merge commit. Exact tags and public releases must agree with that commit.
+- Reject an existing fixed tag pointing elsewhere, an older published version,
+  or moving a major alias to an equal-version different commit or newer version's
+  predecessor. A failed Git lease requires investigation, not an unconditional force.
+- Attach GitHub Releases only to fixed tags. Major tags remain movable even if
+  immutable GitHub Releases are enabled later.
+- A new major version creates a separate major alias. The public-download
+  verifier takes that alias as an input rather than hardcoding `v1`.
+- Ordinary commits do not move aliases. Only `CHANGELOG.md`, `package.json`, and
+  `.release-please-manifest.json` may change in an automated release PR.
+
+The cache action's storage format v2 is independent of its release version.
+The runtime remains committed and reproducible; no npm publication is performed.
+
+## Recovery and manual verification
+
+Release execution is serialized without cancelling an active publication. GitHub
+may replace an older pending concurrency run when several CI completions arrive
+close together. If a release remains pending, or an API/verification step fails,
+use **Release → Run workflow** on `main` and supply the successful main-push CI
+run ID for the release merge commit. Do not supply a PR run or a dispatch run.
+
+The workflow rechecks the retained CI run, reuses matching tags/releases, and
+retries major advancement and public verification. It rejects conflicting tags
+and newer aliases instead of overwriting them. After a partial failure, a fixed
+release may already exist; inspect the job summary and refs before recovery.
+A failed post-publication verification leaves the release pending and stops the
+next proposal. No automatic rollback or deletion of a published release occurs.
+
+For an independent observation, run **Verify published action** and provide the
+major tag and optional expected full commit SHA. It uses synthetic temporary
+storage and does not inspect a real runner's cache volume.
 
 ```sh
-release_commit=$(git rev-parse origin/main)
-git tag -a v1.0.0 "$release_commit" -m 'Release v1.0.0'
-git tag v1 "$release_commit"
-git push --atomic origin refs/tags/v1.0.0 refs/tags/v1
-gh release create v1.0.0 --verify-tag --title 'v1.0.0' --notes-file .cache/release-notes.md --latest
+gh workflow run verify-release.yml --ref main -f major-tag=v1 -f expected-sha=FULL_RELEASE_COMMIT_SHA
 ```
 
-Prepare `.cache/release-notes.md` first. Use the repository's configured Git
-authentication. The exact and major tags initially resolve to the same commit;
-only the exact tag has a GitHub Release.
-
-## Later compatible releases
-
-Create and publish the new exact tag/release after the same verification. Then
-advance the major alias to that tested release commit. Observe the remote alias
-before updating it and use a targeted lease to detect concurrent changes:
-
-```sh
-release_commit=$(git rev-parse 'v1.0.1^{commit}')
-old_alias=$(git ls-remote origin refs/tags/v1 | cut -f1)
-test -n "$old_alias"
-git push --force-with-lease="refs/tags/v1:$old_alias" origin "$release_commit:refs/tags/v1"
-```
-
-`v1.0.1` is an example of a future patch release; select the actual approved
-version. Never force-push every tag or overwrite an exact release tag. If a lease
-fails, inspect the new remote state before deciding what to publish.
-
-## Verify publication
-
-Confirm the remote exact tag (peeling an annotated tag to its commit), major tag,
-and GitHub Release all resolve to the tested commit. Confirm no `v1` branch was
-created and `uses: WhiteKiwi/actions-volume-cache@v1` fetches the full action,
-including both executable lock helpers and their checksum manifest.
-
-Run the manual consumer check after publishing and inspect its native x64/arm64
-results. It downloads `WhiteKiwi/actions-volume-cache@v1` as a remote action and
-uses a post observer to verify saving. Confirm the downloaded action SHA in the
-logs matches the chosen release commit:
-
-```sh
-gh workflow run verify-release.yml --ref v1.0.0
-gh run list --workflow verify-release.yml
-```
-
-Select the exact tag being verified; `v1.0.0` is the initial-release example.
-
-For the first release:
-
-```sh
-git ls-remote origin refs/tags/v1 refs/tags/v1.0.0 'refs/tags/v1.0.0^{}' refs/heads/v1
-gh release view v1.0.0
-```
-
-A draft, a local-only tag, or a pending CI run is not a completed release. Keep
-the release commit, tag targets, CI URLs, and final publication receipt with the
-task's verification record.
+After any release, inspect exact and major refs, GitHub Release, native consumer
+verification, and Marketplace status. A draft, a local tag, or a pending job is
+not evidence of completed publication.
 
 ## Marketplace listing
 
-Use the public display name and branding in `action.yml`. Keep the listing
-focused on local-volume caching for Linux self-hosted runners, and retain the
-persistent-mount and trusted-job requirements in the README. Check name
-availability in GitHub's release form rather than assuming it is unique.
+The account owner accepted GitHub Marketplace Developer Agreement v2.4 for the
+initial `v1.0.1` listing. The release automation does not accept new agreements or
+perform interactive authentication. It only reads the public listing.
 
-The project uses the root MIT license. Preserve bundled third-party notices.
-A release containing license or listing changes still follows the exact-commit
-checks above; do not rewrite an older tag to add them.
+When manual publication is needed, edit the existing fixed-version release,
+select **Publish this Action to the GitHub Marketplace**, and save. Keep
+**Dependency management** as the primary category and **Continuous integration**
+as the secondary category. Verify the resulting public version. Retain the MIT
+license and bundled third-party notices.
 
-When publishing a release, select **Publish this release to the GitHub
-Marketplace** and choose **Dependency management** as the primary category and
-**Continuous integration** as the secondary category, when offered. Validate
-metadata in the release form and verify the resulting public listing and version.
-A normal CLI-created GitHub Release does not by itself prove Marketplace publication.
+## References
 
-The account owner must accept GitHub's Marketplace Developer Agreement before
-first publication. Acceptance is a separate legal commitment and requires the
-owner's confirmation; repository edits do not accept it. Follow GitHub's
-[publishing instructions](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/publish-in-github-marketplace).
+- [Release Please](https://github.com/googleapis/release-please-action)
+- [GitHub token event suppression and explicit dispatch](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow)
+- [Semantic action releases](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/release-and-maintain-actions)
+- [Immutable releases and movable tags](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases)
+- [Marketplace publishing](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/publish-in-github-marketplace)

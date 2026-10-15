@@ -174,8 +174,11 @@ hit still gets updated after a successful job. See [output usage](docs/USAGE.md#
 - A full commit SHA selects a specific commit if your workflow requires that
   level of pinning. See the [upgrade guide](docs/USAGE.md#versions-and-upgrades).
 
-Release history is in the [changelog](CHANGELOG.md). Maintainers follow the
-[release procedure](docs/RELEASING.md) before publishing or advancing tags.
+Release history is in the [changelog](CHANGELOG.md). Release Please prepares
+version/CHANGELOG PRs; maintainers merge one when ready to release. Publication
+waits for its merge commit to pass CI, then verifies the downloaded public action
+on native x64/arm64. See the [release procedure](docs/RELEASING.md), including
+Marketplace checks and recovery.
 
 Storage currently uses `actions-volume-cache/v2`. Previous v1 storage remains
 untouched and is a cold miss for v2. It is outside v2 cleanup and accounting but

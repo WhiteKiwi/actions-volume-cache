@@ -1,0 +1,139 @@
+name: Release
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ci-run-id:
+        description: Successful main-push CI run ID to resume (not a PR or dispatch run)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'WhiteKiwi/actions-volume-cache' &&
+      ((github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.conclusion == 'success') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: read
+    outputs:
+      released: ${{ steps.publish.outputs.released }}
+      tag: ${{ steps.publish.outputs.tag }}
+      major: ${{ steps.publish.outputs.major }}
+      sha: ${{ steps.publish.outputs.sha }}
+      pr: ${{ steps.publish.outputs.pr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || 'main' }}
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Publish only a release PR's tested merge commit
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release.mjs publish
+
+  verify:
+    needs: publish
+    if: needs.publish.outputs.released == 'true'
+    uses: ./.github/workflows/verify-release.yml
+    with:
+      expected-sha: ${{ needs.publish.outputs.sha }}
+      major-tag: ${{ needs.publish.outputs.major }}
+    permissions:
+      contents: read
+
+  complete:
+    needs: [publish, verify]
+    if: needs.publish.outputs.released == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Mark verified release PR tagged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.publish.outputs.sha }}
+          RELEASE_PR: ${{ needs.publish.outputs.pr }}
+        run: node scripts/release.mjs complete
+
+  marketplace:
+    needs: [publish, verify]
+    if: needs.publish.outputs.released == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Check listing and show manual publication instructions if needed
+        env:
+          RELEASE_TAG: ${{ needs.publish.outputs.tag }}
+        run: node scripts/release.mjs marketplace
+
+  prepare:
+    needs: [publish, verify, complete]
+    if: >-
+      always() && needs.publish.result == 'success' &&
+      (needs.publish.outputs.released != 'true' ||
+       (needs.verify.result == 'success' && needs.complete.result == 'success'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      # Keep proposal creation separate from publication. release-please must not
+      # create a release before the exact merge commit's CI passes.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          target-branch: main
+          skip-github-release: true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Start CI on the bot-created release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release.mjs dispatch-pr-ci

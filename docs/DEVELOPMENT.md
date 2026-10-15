@@ -4,7 +4,9 @@
 
 The v1 action uses committed distributables and semantic release tags. Public
 examples use the moving `v1` tag; exact releases such as `v1.0.0` remain fixed.
-Follow [RELEASING.md](RELEASING.md) for release verification and tag updates.
+Release Please prepares version/CHANGELOG PRs after successful main CI. Merging
+that PR starts publication after its merge commit passes CI. Follow
+[RELEASING.md](RELEASING.md) for verification, recovery, and tag updates.
 Live ARC adoption and representative performance measurements remain separate tasks.
 
 Read [SPEC.md](SPEC.md) for the agreed behavior and [TESTING.md](TESTING.md) for
@@ -27,7 +29,8 @@ pnpm exec prettier --check .
 gofmt -l lock-helper
 ```
 
-`pnpm check` runs typechecking and `pnpm test`; tests rebuild bundles first.
+`pnpm check` runs typechecking, `pnpm test`, and the release-orchestration
+regressions in `scripts/release.test.mjs`; runtime tests rebuild bundles first.
 `pnpm build` first cross-compiles both static lock helpers, then bundles main/post
 using esbuild. Commit all of `dist/`, including `dist/bin/manifest.json` and the Go
 runtime license. The build pins Go, disables CGO, removes paths/build IDs, and

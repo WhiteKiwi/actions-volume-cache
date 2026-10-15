@@ -1,6 +1,22 @@
-name: Verify published v1
+name: Verify published action
 on:
   workflow_dispatch:
+    inputs:
+      expected-sha:
+        description: Expected full release commit SHA (optional for a manual observation)
+        type: string
+      major-tag:
+        description: Public major tag to download
+        default: v1
+        type: string
+  workflow_call:
+    inputs:
+      expected-sha:
+        required: true
+        type: string
+      major-tag:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,6 +30,27 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.expected-sha || github.sha }}
+          persist-credentials: false
+      # `uses: owner/repo@ref` cannot use an expression. Download the public tag
+      # explicitly, verify its commit, then run that complete downloaded action.
+      - name: Download published major tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: WhiteKiwi/actions-volume-cache
+          ref: ${{ inputs.major-tag || 'v1' }}
+          path: .cache/published-action
+          persist-credentials: false
+      - name: Verify downloaded release commit
+        env:
+          EXPECTED_SHA: ${{ inputs.expected-sha }}
+        run: |
+          actual_sha=$(git -C .cache/published-action rev-parse HEAD)
+          echo "Downloaded published action: $actual_sha"
+          if [ -n "$EXPECTED_SHA" ]; then
+            test "$actual_sha" = "$EXPECTED_SHA"
+          fi
       - name: Prepare synthetic volume
         run: |
           mkdir -p "$RUNNER_TEMP/avc-release"
@@ -23,9 +60,9 @@ jobs:
         uses: ./tests/fixtures/post-observer
         with:
           expected: saved
-      - name: Use published v1
+      - name: Use downloaded published action
         id: cache
-        uses: WhiteKiwi/actions-volume-cache@v1
+        uses: ./.cache/published-action
         with:
           path: .cache/lifecycle-target
           key: lifecycle

@@ -33,4 +33,6 @@ For documentation-only changes, check links, examples, formatting, and consisten
 You do not need to provision a runner or test against a real cache volume.
 
 Contributions are licensed under the repository's [MIT license](LICENSE).
-Maintainers handle release tags using the [release procedure](docs/RELEASING.md).
+Use Conventional Commit squash titles (`fix:`, `feat:`, or `feat!:`) so Release
+Please can prepare the next version. Maintainers review and merge its release PR
+using the [release procedure](docs/RELEASING.md).
