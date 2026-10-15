@@ -81,6 +81,15 @@ export async function publishRelease({ api, git, repo, sha, version, manifest, c
   assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
   assert.match(sha, /^[a-f0-9]{40}$/);
   const prs = await api('GET', `/commits/${sha}/pulls?per_page=100`);
+  for (const pr of prs) {
+    if (pr.merged_at && pr.head.ref === RELEASE_BRANCH && pr.user.login === 'github-actions[bot]') {
+      assert.match(
+        pr.merge_commit_sha || '',
+        /^[a-f0-9]{40}$/,
+        'Missing release PR merge identity',
+      );
+    }
+  }
   const candidates = prs.filter((pr) => isReleasePR(pr, repo, sha));
   assert(candidates.length <= 1, 'Ambiguous release pull request');
   if (!candidates.length) return { released: false };

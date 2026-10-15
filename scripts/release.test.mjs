@@ -107,6 +107,14 @@ test('ordinary main commits cannot publish releases', async () => {
   assert.equal(state.pushes.length, 0);
 });
 
+test('an API response missing the merged release identity cannot silently skip publication', async () => {
+  const { state, args } = fixture();
+  delete state.pr.merge_commit_sha;
+  await assert.rejects(publishRelease(args), /Missing release PR merge identity/);
+  assert.equal(state.mutations.length, 0);
+  assert.equal(state.pushes.length, 0);
+});
+
 test('fork, human, other-branch and unrelated merge PRs cannot impersonate a release', () => {
   const { state } = fixture();
   for (const mutate of [
