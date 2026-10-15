@@ -82,6 +82,7 @@ export async function readBounded(file: string, limit: number): Promise<Buffer> 
 export async function writeJson(file: string, value: unknown): Promise<void> {
   await noSymlinkAncestors(file);
   const temporary = `${file}.${randomUUID()}.tmp`;
+  let committed = false;
   try {
     const handle = await fs.open(temporary, 'wx', 0o600);
     try {
@@ -91,8 +92,9 @@ export async function writeJson(file: string, value: unknown): Promise<void> {
       await handle.close();
     }
     await fs.rename(temporary, file);
+    committed = true;
   } finally {
-    await fs.rm(temporary, { force: true });
+    if (!committed) await fs.rm(temporary, { force: true });
   }
 }
 

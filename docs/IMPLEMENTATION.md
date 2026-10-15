@@ -30,10 +30,18 @@ reclaimed safely under that lock. No PID or elapsed-time stale-lock guessing.
 
 Normalize path identities into workspace-relative, home-relative, or absolute
 names, in that priority. Absolute locations inside the current workspace/home
-receive the same portable identity as relative/tilde inputs. A unit is an actual
-matched file/directory root, not the whole multiline input. Collapse overlapping
-roots so parent directories own their descendants. Exclusions filter both save
-and restore traversal and do not create entries.
+receive the same portable identity as relative/tilde inputs. Canonicalize the
+runner-provided workspace/home roots, including aliases in absolute inputs,
+before computing identities. Do not resolve directory links below those roots;
+the no-follow checks still protect cache traversal and destination writes.
+Main/post context checks compare the resolved workspace.
+
+A unit is an actual matched file/directory root, not the whole multiline input.
+Collapse overlapping roots when saving. When restoring, attempt parents first
+and skip descendants only after their parent successfully restores. A missing
+or corrupt parent cannot hide usable descendant entries; partial restoration
+reports `'false'`. Exclusions filter both save and restore traversal and do not
+create entries.
 
 Discover units from current filesystem matches plus saved metadata, so globs can
 find cache roots absent from a fresh workspace. Literal missing paths still count
@@ -53,12 +61,22 @@ mtime, not ownership, ACLs, capabilities, set-ID bits, or hard-link topology.
 
 Prepare restore data in a private directory beside the destination so rename
 operations stay on one filesystem. Preflight all destination types and ancestors.
-Journal intended replacements, back up overwritten leaves, merge prepared leaves,
-then mark committed and reclaim backups. Recover an unfinished journal before
-another restore to the same root. Normal exceptions roll back. A killed process
-does not emit a hit; an interrupted workspace must not proceed as a successful
-restore. No multi-file atomicity or recovery from disk/controller power loss is
-claimed. Destination-only/excluded paths are never removed.
+Write a preparing journal before copying, journal intended replacements, back up
+overwritten leaves, merge prepared leaves, then mark committed and reclaim
+backups. Before selecting restore/save units, scan each positive pattern's
+literal search tree for unfinished journals, without following directory links
+or entering transaction payloads. Inspect the search root's parent for its own
+journal as well. This adds a directory walk and recovers temporarily absent
+leaves or nested transactions even after the source cache is gone. Validate the
+journal's destination, parent, filename hash, and node paths before recovery.
+Unknown directories without a journal are preserved during discovery.
+
+Normal exceptions roll back. Journal inspection/recovery failures fail the action
+because a previous merge may be incomplete. A killed process does not emit a hit;
+an interrupted workspace must not proceed as a successful restore. No multi-file
+atomicity or recovery from disk/controller power loss is claimed. Destination-only
+and excluded paths are never removed by a new restore; recovery completes the
+previous transaction before applying current exclusions.
 
 ## Capacity and retention
 
@@ -81,7 +99,13 @@ remove entries another workflow expected to retain. These are cleanup/admission
 settings, not a persistent multi-tenant quota or access-control system.
 
 Cleanup uses last successful restore/save time. It removes expired entries and,
-when enabled, abandoned cache staging. Publication also reclaims its superseded
-generation; that is replacement housekeeping, not retention eviction. Disabling
-automatic cleanup prevents age-based cleanup; shared/unrelated data is never
-eligible. No background process, cleanup action, or schedule is installed.
+when enabled, abandoned cache staging, unreferenced generations, entries without
+a committed pointer, and interrupted pointer-write temporary files. Preserve
+corrupt pointers whose referenced generation cannot be determined safely.
+Publication failures remove the unpublished generation immediately, even when
+automatic cleanup is disabled. If that removal fails or the process is killed,
+a later enabled cleanup reclaims it under the same lock. Publication also
+reclaims its superseded generation; that is replacement housekeeping, not
+retention eviction. Disabling automatic cleanup prevents age-based and abandoned
+data cleanup; shared/unrelated data is never eligible. No background process,
+cleanup action, or schedule is installed.

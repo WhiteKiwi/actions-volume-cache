@@ -122,3 +122,50 @@ test('packaged action fails configuration errors and warns on unavailable volume
     await f.close();
   }
 });
+
+test('packaged main/post accepts aliased runner roots and validates the resolved context', async () => {
+  const f = await fixture();
+  try {
+    const alias = path.join(f.root, 'runner-alias');
+    await fs.symlink(f.root, alias);
+    const state = path.join(f.root, 'state');
+    const output = path.join(f.root, 'output');
+    await fs.writeFile(state, '');
+    await fs.writeFile(output, '');
+    const env = {
+      ...process.env,
+      HOME: path.join(alias, 'home'),
+      GITHUB_REPOSITORY_ID: f.options.repository,
+      GITHUB_WORKSPACE: path.join(alias, 'workspace'),
+      GITHUB_STATE: state,
+      GITHUB_OUTPUT: output,
+      INPUT_PATH: path.join(alias, 'workspace/target'),
+      INPUT_KEY: f.options.key,
+      'INPUT_VOLUME-PATH': f.options.volume,
+    };
+    const run = await execute(main, f.options.workspace, env);
+    assert.equal(run.code, 0, run.output);
+    const saved = parseCommands(await fs.readFile(state, 'utf8')).options;
+    assert.ok(saved);
+    assert.equal(JSON.parse(saved).workspace, f.options.workspace);
+    assert.equal(JSON.parse(saved).home, f.options.home);
+    await f.file('target/a', 'post through alias');
+    const savedRun = await execute(post, f.options.workspace, { ...env, STATE_options: saved });
+    assert.equal(savedRun.code, 0, savedRun.output);
+    assert.match(savedRun.output, /Saved/);
+    await f.reset();
+    const hit = await execute(main, f.options.workspace, env);
+    assert.equal(hit.code, 0, hit.output);
+    assert.equal(parseCommands(await fs.readFile(output, 'utf8'))['cache-hit'], 'true');
+    assert.equal(await f.read('target/a'), 'post through alias');
+    const changed = await execute(post, f.options.workspace, {
+      ...env,
+      STATE_options: saved,
+      GITHUB_WORKSPACE: f.options.home,
+    });
+    assert.equal(changed.code, 1);
+    assert.match(changed.output, /context changed/);
+  } finally {
+    await f.close();
+  }
+});

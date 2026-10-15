@@ -31,6 +31,12 @@ const magic = (text: string): boolean => /[*?\[\]{}()]/.test(text);
 const matches = (candidate: string, pattern: string): boolean =>
   minimatch(candidate, pattern, { dot: true, nonegate: true, nocomment: true });
 
+export function searchRoot(pattern: string): string {
+  const parts = pattern.split('/');
+  const firstMagic = parts.findIndex((part) => magic(part));
+  return firstMagic < 0 ? pattern : parts.slice(0, firstMagic).join('/') || '/';
+}
+
 export function excluded(file: string, options: Options): boolean {
   const negative = patterns(options).negative;
   let current = path.resolve(file);
@@ -86,9 +92,28 @@ export async function validateTarget(file: string, options: Options): Promise<vo
   }
 }
 
-export async function validateOptions(options: Options): Promise<void> {
+export async function validateOptions(input: Options): Promise<Options> {
   if (process.platform !== 'linux')
     throw new InputError('This action currently supports Linux only');
+  const workspace = await realLocation(input.workspace);
+  const home = await realLocation(input.home);
+  // Resolve only the runner-provided roots. Links below those roots remain
+  // leaves, and directory aliases inside cache targets must still be rejected.
+  const paths = input.paths.map((raw) => {
+    const negative = raw.startsWith('!');
+    let file = absolutePattern(negative ? raw.slice(1) : raw, input);
+    for (const [alias, real] of [
+      [input.workspace, workspace],
+      [input.home, home],
+    ] as const) {
+      if (within(alias, file)) {
+        file = path.join(real, path.relative(alias, file));
+        break;
+      }
+    }
+    return `${negative ? '!' : ''}${file}`;
+  });
+  const options = { ...input, workspace, home, paths };
   const volume = await realLocation(options.volume);
   if (volume === '/' || volume === (await realLocation(options.home)))
     throw new InputError('volume-path must not be filesystem root or the entire home');
@@ -99,11 +124,9 @@ export async function validateOptions(options: Options): Promise<void> {
       await validateTarget(pattern, options);
       continue;
     }
-    const parts = pattern.split('/');
-    const firstMagic = parts.findIndex((part) => magic(part));
-    const search = parts.slice(0, firstMagic).join('/') || '/';
-    await validateTarget(search, options);
+    await validateTarget(searchRoot(pattern), options);
   }
+  return options;
 }
 
 // Existing directory roots own descendants so overlapping globs do not create
@@ -163,5 +186,10 @@ export async function selectUnits(
     }
     if (!included) unmatched = true;
   }
-  return { units: collapse([...chosen.values()]), unmatched };
+  const units = [...chosen.values()].sort(
+    (a, b) => a.destination.length - b.destination.length || a.id.localeCompare(b.id),
+  );
+  // During restore, a missing or damaged parent must not hide a cached child.
+  // The caller skips children only after their parent has actually restored.
+  return { units: includeMissing ? units : collapse(units), unmatched };
 }

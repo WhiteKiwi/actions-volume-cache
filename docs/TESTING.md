@@ -12,6 +12,14 @@ functional cache cases, input parsing, multi-process concurrency, failure/recove
 and distributable main/post tests. ENOSPC behavior is fault-injected; tests do not
 fill a real disk. Process-death tests do send SIGKILL to synthetic child workers.
 
+Review regressions cover real pointer-rename failure and injected ENOSPC after
+moving a generation, SIGKILL before first/replacement pointer publication,
+workspace/home aliases including packaged main/post context validation, cached
+descendants beneath missing/corrupt parents, and recovery before glob expansion
+after both a leaf backup and a nested file replacement. The five source-level
+regression cases also fail against the pre-fix PR source. Directory aliases below
+trusted roots remain rejected; unknown transaction-like directories are preserved.
+
 Use synthetic data in disposable directories. A local filesystem experiment
 is not evidence that the complete action works. Test the main/post-job lifecycle
 on GitHub before claiming successful-job or cancellation behavior is verified.
