@@ -1,0 +1,57 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Install pnpm locally
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pnpm" pnpm@11.25.0
+          echo "$RUNNER_TEMP/pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm exec prettier --check .
+      - name: Verify reproducible distributables
+        run: git diff --exit-code -- dist
+
+  lifecycle:
+    name: lifecycle-success
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare synthetic volume
+        run: |
+          mkdir -p "$RUNNER_TEMP/avc-lifecycle"
+          echo "AVC_LIFECYCLE_VOLUME=$RUNNER_TEMP/avc-lifecycle" >> "$GITHUB_ENV"
+      # Post steps run in reverse registration order. The observer verifies the
+      # cache after its save post step has run.
+      - name: Observe post-job result
+        uses: ./tests/fixtures/post-observer
+        with:
+          expected: saved
+      - name: Volume cache
+        id: cache
+        uses: ./
+        with:
+          path: .cache/lifecycle-target
+          key: lifecycle
+          volume-path: ${{ env.AVC_LIFECYCLE_VOLUME }}
+      - name: Verify cold miss and create build output
+        env:
+          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: |
+          test -z "$CACHE_HIT"
+          mkdir -p .cache/lifecycle-target
+          printf 'lifecycle-data' > .cache/lifecycle-target/value

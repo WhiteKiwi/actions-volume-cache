@@ -2,9 +2,10 @@
 
 ## Project status and scope
 
-This repository currently contains specifications, not a working action.
-Read `README.md`, `docs/SPEC.md`, `docs/DEVELOPMENT.md`, and `docs/TESTING.md`
-before implementing or changing behavior.
+This repository contains an initial TypeScript/Node 24 implementation, committed
+JavaScript distributables, tests, and CI. It has no tagged release yet.
+Read `README.md`, `docs/SPEC.md`, `docs/IMPLEMENTATION.md`, `docs/DEVELOPMENT.md`,
+and `docs/TESTING.md` before changing behavior.
 
 `docs/SPEC.md` records the agreed product contract. Distinguish confirmed
 requirements from its open implementation decisions. Do not turn an open item
@@ -44,9 +45,14 @@ For documentation-only changes, check relative links, examples, consistency,
 whitespace, and Git status. Do not claim runtime tests passed when no runtime exists.
 
 For implementation changes, use the meaningful scenarios in `docs/TESTING.md`.
-Run the established repository checks once tooling exists; there are currently no
-package, build, lint, or test commands to run. Update this guidance with real commands
-when adding that tooling. Keep generated artifacts reproducible if packaging requires them.
+Use Node 24 and pnpm 11.25.0. Run `pnpm install --frozen-lockfile`, `pnpm check`,
+and `pnpm exec prettier --check .`. `pnpm check` includes typechecking, bundling,
+and tests. Commit the resulting `dist/main.js` and `dist/post.js`; CI must reproduce
+them without a diff. Build with `pnpm build` when only regenerating bundles.
+
+The action under `tests/fixtures/post-observer` is a private CI fixture, not a
+second supported public action. Do not confuse its always-running post observer
+with the product's successful-job-only save hook.
 
 Report changed files, actual verification, and remaining limitations. Never report
 an example version, acceptance target, speed claim, or deployment as verified without evidence.

@@ -1,0 +1,29 @@
+{
+  "name": "actions-volume-cache",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Uncompressed local-volume caches for GitHub Actions",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && node --import tsx --test --test-concurrency=1 tests/*.test.ts",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@actions/glob": "^0.7.0",
+    "minimatch": "^10.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.28.2",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

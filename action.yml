@@ -1,0 +1,35 @@
+name: Volume Cache
+description: Restore and update uncompressed caches on a persistent local volume
+inputs:
+  path:
+    description: Files, directories, and glob/exclusion patterns to cache
+    required: true
+  key:
+    description: Primary lookup key and successful-job save key
+    required: true
+  restore-keys:
+    description: Ordered fallback keys and prefixes
+    required: false
+  volume-path:
+    description: Persistent writable volume path inside the runner
+    required: true
+  auto-cleanup:
+    description: Run age-based cleanup during this action invocation
+    default: 'true'
+  cleanup-retention-days:
+    description: Days since the last successful restore or save before cleanup
+    default: '7'
+  max-cache-size:
+    description: Aggregate committed payload budget, e.g. 100GiB; unset for no limit
+    required: false
+outputs:
+  cache-hit:
+    description: "'true' for all exact hits, 'false' for partial/fallback hits, empty for no restored data"
+runs:
+  using: node24
+  main: dist/main.js
+  post: dist/post.js
+  post-if: success()
+branding:
+  icon: hard-drive
+  color: green
