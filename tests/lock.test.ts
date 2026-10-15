@@ -74,13 +74,21 @@ test('all shipped helpers match their checksums and contain no dynamic interpret
 });
 
 test('helper rejects an invalid descriptor and lock symlinks never redirect', async () => {
+  // Runtime startup may open FD 3 itself; use an explicitly invalid high FD.
   const invalid = spawnSync(
     helperPath(),
-    ['--mode', 'exclusive', '--parent-pid', String(process.pid)],
+    ['--mode', 'exclusive', '--fd', '2147483647', '--parent-pid', String(process.pid)],
     { encoding: 'utf8' },
   );
   assert.equal(invalid.status, 2);
   assert.match(invalid.stderr, /regular file/);
+  const pipe = spawnSync(
+    helperPath(),
+    ['--mode', 'exclusive', '--fd', '3', '--parent-pid', String(process.pid)],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe', 'pipe'] },
+  );
+  assert.equal(pipe.status, 2);
+  assert.match(pipe.stderr, /regular file/);
   const f = await fixture();
   try {
     const target = await f.file('keep', 'untouched');
