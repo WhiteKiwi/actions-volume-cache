@@ -5,9 +5,44 @@ templates are available for [npm](../examples/npm.yml), [pnpm](../examples/pnpm.
 and [Rust / Cargo](../examples/rust.yml). Supply the persistent mount described
 in [runner setup](RUNNERS.md), and adapt runner selection and project commands.
 
-All examples pin the tested action commit `b8b00a6601529c337a7f70b82a6dc7ad10c7519d`.
-No release tag exists yet. When upgrading, select a reviewed commit with passing
-CI and check its storage compatibility notes before replacing the pinned SHA.
+The examples use `WhiteKiwi/actions-volume-cache@v1`. Read
+[versions and upgrades](#versions-and-upgrades) when selecting a fixed release
+or a full commit SHA instead.
+
+## Versions and upgrades
+
+| Reference                               | Behavior                                                             |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `WhiteKiwi/actions-volume-cache@v1`     | Follow approved compatible 1.x releases through the moving `v1` tag. |
+| `WhiteKiwi/actions-volume-cache@v1.0.0` | Select the first release through a fixed version tag.                |
+| A full 40-character commit SHA          | Select one exact commit independently of tag movement.               |
+
+`v1` and `v1.0.0` are Git tags under `refs/tags/`, not branches under
+`refs/heads/`. Only the major alias moves during compatible releases. Exact
+release tags identify one release and are never reused or moved. Main can
+contain development commits that have not been released to `v1`.
+
+For a fixed version, change the action step to:
+
+```yaml
+uses: WhiteKiwi/actions-volume-cache@v1.0.0
+```
+
+For full SHA pinning, find the commit for the chosen version in its
+[release](https://github.com/WhiteKiwi/actions-volume-cache/releases), verify it
+belongs to this repository, and use that full commit SHA after `@`. For example,
+after fetching this repository's tags, `git rev-parse 'v1.0.0^{commit}'` prints the
+release commit even when the version tag is annotated. A major tag can move;
+a commit SHA keeps selecting the same code. Third-party actions in the templates
+also use readable major tags and can be pinned independently if needed.
+
+Review the [changelog](../CHANGELOG.md), tool compatibility, and storage notes
+before upgrading. Breaking contract changes require a new major series such as
+`v2`. Storage format v2 is a separate concept from the action release `v1`.
+
+This follows GitHub's guidance for
+[semantic action releases](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/release-and-maintain-actions)
+and [version aliases](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases).
 
 ## Workflow order
 
@@ -177,7 +212,7 @@ workspace-local copies instead, including for pnpm.
 ## Moving from actions/cache or old storage
 
 Keep the familiar `path`, `key`, and ordered `restore-keys`, add `volume-path`,
-and replace the action reference with the pinned commit. Use the combined action
+and use the versioned action reference. Use the combined action
 before your build; remove a separate cache-save step for those same paths.
 Review keys because branch scope, independent path matching, mutable exact keys,
 capacity, and the available inputs differ from `actions/cache`.
@@ -185,6 +220,6 @@ capacity, and the available inputs differ from `actions/cache`.
 Existing GitHub-hosted caches are not imported or used as fallback. Existing
 `actions-volume-cache/v1` storage is also not read by v2 or cleaned by it. Expect
 a cold first v2 run and budget for legacy data separately. Do not infer storage
-format from a Git tag: the current pinned commit uses storage format v2.
+format from an action version: the v1 release uses storage format v2.
 
 See [troubleshooting](TROUBLESHOOTING.md) for misses, warnings, and missing saves.

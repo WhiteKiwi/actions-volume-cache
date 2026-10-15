@@ -3,7 +3,8 @@
 ## Project status and scope
 
 This repository contains an initial TypeScript/Node 24 implementation, committed
-JavaScript distributables, tests, and CI. It has no tagged release yet.
+JavaScript distributables, tests, and CI. Public examples use semantic version
+tags; follow `docs/RELEASING.md` when publishing or moving a major-version alias.
 Read `README.md`, `docs/SPEC.md`, `docs/IMPLEMENTATION.md`, `docs/DEVELOPMENT.md`,
 and `docs/TESTING.md` before changing behavior.
 

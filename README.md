@@ -11,11 +11,12 @@ GitHub Actions self-hosted runners.
 - Use one action with bundled Linux x64/arm64 lock helpers. The action needs no
   external `flock`, Go toolchain, compiler, Docker, or elevated privileges.
 
-**Status:** initial implementation with native x64/arm64 CI and GitHub post-job
-lifecycle checks. Examples pin the tested commit
-[`b8b00a6`](https://github.com/WhiteKiwi/actions-volume-cache/commit/b8b00a6601529c337a7f70b82a6dc7ad10c7519d).
-There is no release tag yet. Live ARC deployment and performance measurements
-remain separate qualification work.
+**Versioning:** use `@v1` for compatible 1.x updates, or `@v1.0.0` to select the
+[first release](https://github.com/WhiteKiwi/actions-volume-cache/releases/tag/v1.0.0).
+Both are Git tags. Native x64/arm64 CI covers the action and GitHub post-job
+lifecycle. Live ARC deployment and performance measurements remain separate
+qualification work. See [versions and upgrades](docs/USAGE.md#versions-and-upgrades)
+for fixed versions and optional full commit-SHA pinning.
 
 ## Contents
 
@@ -24,6 +25,7 @@ remain separate qualification work.
 - [Inputs](#inputs)
 - [Output](#output)
 - [Cache behavior](#cache-behavior)
+- [Versions and upgrades](#versions-and-upgrades)
 - [Differences from actions/cache](#differences-from-actionscache)
 - [Guides and support](#guides-and-support)
 - [Development](#development)
@@ -52,14 +54,14 @@ jobs:
     env:
       NPM_CONFIG_CACHE: ${{ github.workspace }}/.cache/npm
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           package-manager-cache: false
       - name: Restore and update npm cache
         id: local-cache
-        uses: WhiteKiwi/actions-volume-cache@b8b00a6601529c337a7f70b82a6dc7ad10c7519d
+        uses: WhiteKiwi/actions-volume-cache@v1
         with:
           volume-path: /cache
           path: .cache/npm
@@ -148,6 +150,22 @@ hit still gets updated after a successful job. See [output usage](docs/USAGE.md#
   failures warn and let the job continue. An unrecoverable restore journal fails
   the action so a partially restored workspace cannot proceed unnoticed.
 
+## Versions and upgrades
+
+```yaml
+- uses: WhiteKiwi/actions-volume-cache@v1
+```
+
+- `v1` is a moving major-version **tag** for the latest approved compatible 1.x
+  release. It is updated when releasing, independently of ongoing main development.
+- `v1.0.0` is the fixed tag for the first release. Exact release tags are never
+  moved; corrections are published as a new version.
+- A full commit SHA selects a specific commit if your workflow requires that
+  level of pinning. See the [upgrade guide](docs/USAGE.md#versions-and-upgrades).
+
+Release history is in the [changelog](CHANGELOG.md). Maintainers follow the
+[release procedure](docs/RELEASING.md) before publishing or advancing tags.
+
 Storage currently uses `actions-volume-cache/v2`. Previous v1 storage remains
 untouched and is a cold miss for v2. It is outside v2 cleanup and accounting but
 still uses disk space. Storage format versions are separate from action release
@@ -177,7 +195,7 @@ managed cleanup. See [shared tool caches](docs/USAGE.md#shared-tool-caches).
 - [Specification](docs/SPEC.md), [implementation](docs/IMPLEMENTATION.md), and
   [verification coverage](docs/TESTING.md): the contract and technical boundaries.
 - [Report a problem](https://github.com/WhiteKiwi/actions-volume-cache/issues/new):
-  include the pinned SHA, runner OS/architecture, sanitized step configuration,
+  include the action version/ref, runner OS/architecture, sanitized step configuration,
   cache warnings, and whether the problem occurs on restore or post-job save.
   Keep credentials and cached file contents out of reports.
 

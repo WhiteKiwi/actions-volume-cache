@@ -22,7 +22,7 @@ Expected cold misses and ordinary cache warnings do not fail the build.
 | `Timed out waiting for cache lock`                          | Lock waits are bounded to 300 seconds. Check slow or active operations for that entry/workspace and filesystem health. Unrelated entries can still copy concurrently.                                        |
 | Checksum or invalid-metadata warning                        | The candidate is unusable; remaining candidates may be tried. Report repeat failures with sanitized metadata paths and action SHA.                                                                           |
 | Restore journal/recovery error                              | Treat the failed action as an incomplete workspace operation. Preserve logs and inspect the affected private workspace before reusing it; the action fails instead of accepting a partial restore.           |
-| `Exec format error` / unsupported architecture              | Use Linux x64 or arm64 and the complete action distributable from the pinned commit. Other architectures/platforms are outside the current support boundary.                                                 |
+| `Exec format error` / unsupported architecture              | Use Linux x64 or arm64 and the complete action distributable from the selected version/ref. Other architectures/platforms are outside the current support boundary.                                          |
 | Native helper cannot execute                                | Confirm executable permissions and that the action checkout is on an executable filesystem. Installing host `flock` or Go is not part of consumer setup.                                                     |
 
 ## Safe diagnosis
@@ -41,7 +41,8 @@ reason to delete an entry or broaden cleanup scope.
 
 [Open an issue](https://github.com/WhiteKiwi/actions-volume-cache/issues/new) with:
 
-- The full action commit SHA, runner OS/architecture, and relevant tool versions.
+- The action version/ref, resolved commit SHA if available, runner OS/architecture,
+  and relevant tool versions.
 - Sanitized `with` values and runner-visible volume/destination paths.
 - Whether it occurs during restore, the build, or the action's post-job save.
 - Relevant warnings and whether fresh jobs reuse the same physical volume.
