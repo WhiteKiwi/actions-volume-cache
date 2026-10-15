@@ -1,0 +1,30 @@
+name: npm CI with local cache
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: [self-hosted, linux] # Replace with your runner labels or ARC scale-set name.
+    env:
+      NPM_CONFIG_CACHE: ${{ github.workspace }}/.cache/npm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Restore and update npm cache
+        id: local-cache
+        uses: WhiteKiwi/actions-volume-cache@b8b00a6601529c337a7f70b82a6dc7ad10c7519d
+        with:
+          volume-path: /cache
+          path: .cache/npm
+          key: ${{ runner.os }}-${{ runner.arch }}-node24-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-node24-npm-
+      - run: npm ci
+      - run: npm test

@@ -1,144 +1,190 @@
 # actions-volume-cache
 
-Uncompressed, key-based local caches for Linux GitHub Actions self-hosted runners.
+[![CI](https://github.com/WhiteKiwi/actions-volume-cache/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/WhiteKiwi/actions-volume-cache/actions/workflows/ci.yml)
 
-**Status: initial implementation.** Source, bundled JavaScript, local tests, and
-GitHub lifecycle CI are included. There is no tagged release yet; `@v1` below is
-an intended release reference, not an available tag. Use a reviewed commit SHA
-when evaluating the implementation. ARC deployment and performance qualification
-are separate from the source and lifecycle checks.
+Restore and update **uncompressed local caches** on persistent volumes for Linux
+GitHub Actions self-hosted runners.
 
-## What it does
+- Keep cache transfers on the local filesystem.
+- Give each job its own writable copies, with concurrent reads across jobs.
+- Update the primary key after successful jobs, including exact cache hits.
+- Use one action with bundled Linux x64/arm64 lock helpers. The action needs no
+  external `flock`, Go toolchain, compiler, Docker, or elevated privileges.
 
-1. Find local cache entries using `key`, then ordered `restore-keys`.
-2. Copy cached data into the requested job paths without creating or extracting archives.
-3. Let the job use its own writable copies, including during parallel jobs.
-4. After a successful job, publish updated entries under `key`, including exact hits.
+**Status:** initial implementation with native x64/arm64 CI and GitHub post-job
+lifecycle checks. Examples pin the tested commit
+[`b8b00a6`](https://github.com/WhiteKiwi/actions-volume-cache/commit/b8b00a6601529c337a7f70b82a6dc7ad10c7519d).
+There is no release tag yet. Live ARC deployment and performance measurements
+remain separate qualification work.
 
-This keeps transfer on the local filesystem. It still copies files, consumes
-temporary disk space, and needs measurement before claiming a speed improvement.
-The runner and job workspace can be disposable; the cache volume must persist.
+## Contents
 
-Linux self-hosted runners are the support target. ARC on K3s is the first
-integration environment, not a required platform. The initial CI environment
-provides 1 CPU / 2 GB per runner without Docker; repositories choose their own tools.
+- [Quick start](#quick-start)
+- [Runner requirements](#runner-requirements)
+- [Inputs](#inputs)
+- [Output](#output)
+- [Cache behavior](#cache-behavior)
+- [Differences from actions/cache](#differences-from-actionscache)
+- [Guides and support](#guides-and-support)
+- [Development](#development)
 
-## Usage
+## Quick start
 
-Requirements: a Linux x64 or arm64 runner supporting `node24` and a persistent,
-writable local filesystem supporting flock and atomic rename.
-Use the canonical absolute mount path. NFS/SMB and hostile jobs sharing writable
-storage are not supported by this first implementation.
+First, have the runner operator provide a persistent, writable `/cache` mount
+outside the job workspace. The action uses that mount; it does not create or
+provision it. See the [runner setup guide](docs/RUNNERS.md).
 
-The operator must mount the volume at the same runner-visible path for jobs that
-should share caches. This action does not provision or mount it and needs no Docker.
-The action includes native lock helpers for both architectures. Consumers do not
-install `flock`, Go, a compiler, or packages and need no sudo for the action.
+For an npm project with a committed `package-lock.json` and a `test` script,
+copy this to `.github/workflows/ci.yml`:
 
 ```yaml
-# Replace @v1 with a reviewed commit SHA until a release is tagged.
-- name: Restore and update local build cache
-  id: local-cache
-  uses: WhiteKiwi/actions-volume-cache@v1
-  with:
-    volume-path: /cache
-    path: |
-      frontend/.next/cache
-      backend/target
-    key: linux-build-${{ hashFiles('**/Cargo.lock', '**/pnpm-lock.yaml') }}
-    restore-keys: |
-      linux-build-
-    auto-cleanup: true
-    cleanup-retention-days: 7
+name: npm CI with local cache
+on:
+  push:
+  workflow_dispatch:
 
-- name: Build and test
-  run: ./scripts/ci.sh
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: [self-hosted, linux] # Replace with your runner labels or ARC scale-set name.
+    env:
+      NPM_CONFIG_CACHE: ${{ github.workspace }}/.cache/npm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Restore and update npm cache
+        id: local-cache
+        uses: WhiteKiwi/actions-volume-cache@b8b00a6601529c337a7f70b82a6dc7ad10c7519d
+        with:
+          volume-path: /cache
+          path: .cache/npm
+          key: ${{ runner.os }}-${{ runner.arch }}-node24-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-node24-npm-
+      - run: npm ci
+      - run: npm test
 ```
 
-The example is an excerpt from a job, after checkout and repository-specific tool
-setup. Adapt paths, compatibility keys, and the build command to the repository.
+Change `runs-on`, the mount path, and project commands for your environment.
+For ARC, use the scale-set name supplied by your operator instead of assuming
+the default `self-hosted` labels exist. The workspace-local npm cache gives jobs
+private destinations, and `package-manager-cache: false` avoids adding a second
+GitHub-hosted npm cache through `setup-node`.
+
+The first successful run saves during the action's post step. A later job using
+the same persistent storage, repository, compatible key, and logical path can
+restore it. Keep running `npm ci` and tests on a hit: cached downloads do not
+replace dependency installation or build verification.
+
+Copyable workflows: [npm](examples/npm.yml), [pnpm](examples/pnpm.yml), and
+[Rust / Cargo](examples/rust.yml). These are project templates; runner deployment
+and each project's build commands must be validated in your environment.
+
+## Runner requirements
+
+| Requirement | What to provide                                                                                                                                          |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Platform    | Linux x64 or arm64, with an Actions runner supporting `node24`.                                                                                          |
+| Storage     | A persistent local filesystem supporting kernel flock and atomic rename, mounted at a canonical absolute path.                                           |
+| Permissions | The runner user can read, write, and traverse the mount. Jobs sharing entries use compatible ownership; see [runner setup](docs/RUNNERS.md#permissions). |
+| Job paths   | Private writable destinations for every job, including any paths under `HOME`.                                                                           |
+| Trust       | Trusted jobs sharing the writable mount. Repository namespaces organize caches; they do not isolate filesystem access.                                   |
+
+NFS/SMB and hostile processes sharing storage are outside the current support
+boundary. No custom token or cache server is required by this action. Project
+tools such as Node, pnpm, or Rust are configured separately by the workflow.
 
 ## Inputs
 
-| Input                    | Required | Default         | Meaning                                                                                                      |
-| ------------------------ | -------- | --------------- | ------------------------------------------------------------------------------------------------------------ |
-| `path`                   | Yes      | None            | Files or directories to restore and save; multiline and glob/exclusion patterns supported.                   |
-| `key`                    | Yes      | None            | Primary lookup key and destination key for successful saves.                                                 |
-| `restore-keys`           | No       | Empty           | Ordered fallback keys/prefixes.                                                                              |
-| `volume-path`            | Yes      | None            | Persistent volume path visible inside the runner.                                                            |
-| `auto-cleanup`           | No       | `true`          | Run age-based cleanup during action execution.                                                               |
-| `cleanup-retention-days` | No       | `7`             | Remove entries unused since their last successful restore or save for this many days.                        |
-| `max-cache-size`         | No       | Unset: no limit | Aggregate managed-cache budget; for example `100GiB`. Over-budget saves fail without evicting other entries. |
+| Input                    | Required | Default | Meaning                                                                                                                             |
+| ------------------------ | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `path`                   | Yes      | None    | Files/directories to copy; multiline paths, globs, `~`, and `!` exclusions are supported.                                           |
+| `key`                    | Yes      | None    | Exact primary lookup key and the destination key for successful saves.                                                              |
+| `restore-keys`           | No       | Empty   | Ordered fallback keys/prefixes, evaluated separately for each logical path.                                                         |
+| `volume-path`            | Yes      | None    | Existing persistent mount visible inside the runner; use its canonical absolute path.                                               |
+| `auto-cleanup`           | No       | `true`  | Run age-based and abandoned-data cleanup during action execution.                                                                   |
+| `cleanup-retention-days` | No       | `7`     | Positive number of days since the last successful restore/save before an entry is eligible for cleanup.                             |
+| `max-cache-size`         | No       | Unset   | Aggregate committed payload budget across repositories in v2; for example `20GiB`. Over-budget saves warn and preserve old entries. |
+
+See [usage and key design](docs/USAGE.md) for matching order, path examples,
+capacity accounting, and cleanup settings. Configure consistent retention and
+budgets across jobs sharing a volume. The budget is an admission check, not a
+filesystem quota; concurrent staging and other data need extra disk headroom.
 
 ## Output
 
-Only `cache-hit` is exposed, as a string:
+Only `cache-hit` is exposed. Step outputs are **strings**:
 
-- `'true'`: every requested cache unit was restored from the exact primary key.
-- `'false'`: some data was restored, but a unit was missing or a fallback key was used.
-- `''`: no cache data was restored.
+| Value     | Meaning                                                   |
+| --------- | --------------------------------------------------------- |
+| `'true'`  | Every requested unit restored from the exact primary key. |
+| `'false'` | Some data restored, with a missing unit or fallback key.  |
+| `''`      | No cache data restored, including a cold miss.            |
 
-An exact hit still gets updated after a successful job. A hit is not a guarantee
-that the current build or tests can be skipped.
+Use explicit string comparisons such as
+`steps.local-cache.outputs.cache-hit == 'true'` when reporting a hit. An exact
+hit still gets updated after a successful job. See [output usage](docs/USAGE.md#reading-cache-hit).
 
-## Behavior to know
+## Cache behavior
 
-- Cache units are independent key/path pairs within a repository namespace.
-- Restore merges into existing paths: cached files overwrite collisions, while
-  destination-only files remain. Exclusions stay untouched.
-- Successful jobs update caches; failed or cancelled jobs do not publish updates.
-- Parallel jobs work independently. The last completed publication wins per key/path pair.
-- Ordinary cache I/O failures warn and allow the job to continue. Invalid inputs fail the action.
-- Same-repository branches share entries when their keys match; branch isolation is explicit in keys.
-- Preserve modification times, read/write/execute permissions, and symbolic links.
-  Restored files belong to the current runner user; original UID/GID are not restored.
-- Cleanup is age-based. A size limit rejects a save instead of triggering size-based eviction.
+- Entries are scoped by repository ID, key, and logical path. Adding a new path
+  does not invalidate another path's entry. Same-repository branches share
+  entries unless you include branch information in the key.
+- Restoration merges cached files into job destinations. Cached files replace
+  ordinary-file collisions; destination-only and excluded files remain.
+- Jobs build using private copies. Readers can overlap; publication and deletion
+  take an exclusive entry lock. Unrelated entries can copy concurrently.
+- Successful jobs publish under `key`, including exact hits and fallback
+  restores. The last completed publication wins per key/path. Failed or cancelled
+  jobs do not publish updates.
+- File times, ordinary permission bits, and symlinks are preserved. Links are not
+  traversed. Restored files belong to the current runner user.
+- Invalid inputs and unsafe destinations fail the action. Ordinary cache I/O
+  failures warn and let the job continue. An unrecoverable restore journal fails
+  the action so a partially restored workspace cannot proceed unnoticed.
 
-## Shared tool caches
-
-Tools that safely support concurrent cache access can point directly at an
-operator-managed location such as `/cache/shared/pnpm`. They do not need this
-action. Configure their cache directories in the workflow or tool configuration.
-
-There is no `shared-paths` input. `/cache/shared` is outside this action's managed
-subtree and cleanup scope. Trust, permissions, and tool-specific concurrency
-requirements remain the operator's responsibility.
+Storage currently uses `actions-volume-cache/v2`. Previous v1 storage remains
+untouched and is a cold miss for v2. It is outside v2 cleanup and accounting but
+still uses disk space. Storage format versions are separate from action release
+tags. See [implementation and compatibility](docs/IMPLEMENTATION.md).
 
 ## Differences from actions/cache
 
-The core input names and the single output are familiar, but this is not a
-drop-in implementation of all GitHub cache behavior. Storage is a local volume;
-copies are uncompressed; exact-key entries are mutable; matching is per path;
-branch scope is controlled through keys. There are no separate restore/save
-actions or automatic GitHub-service fallback in the agreed initial scope.
+| Concern              | This action                                                                  |
+| -------------------- | ---------------------------------------------------------------------------- |
+| Storage              | Operator-provided local volume; no automatic GitHub cache-service fallback.  |
+| Transfer             | Uncompressed private copies; still needs copy time and temporary disk space. |
+| Existing primary key | Updated after successful jobs.                                               |
+| Multiple paths       | Matched independently by logical path.                                       |
+| Branches             | Shared within the repository unless encoded in keys.                         |
+| Public interface     | One combined action and one `cache-hit` output.                              |
+| Capacity             | Optional local admission budget; no eviction solely to make a save fit.      |
 
-## Implementation and verification
+Tool caches with their own safe concurrency support can use operator-managed
+paths such as `/cache/shared/pnpm` directly. Those paths are outside this action's
+managed cleanup. See [shared tool caches](docs/USAGE.md#shared-tool-caches).
 
-The action is written in TypeScript and bundled for Node 24, with a small static
-Go executable for kernel locks. Main restores; GitHub runs post-job saving only
-on job success. Readers share a lock for the actual repository/key/path entry.
-Publication and cleanup take an exclusive lock for that entry. Different entries
-can copy data concurrently; a brief metadata lock coordinates catalog reads,
-timestamps, aggregate size admission, and pointer publication. Payload copies
-and recursive deletion happen outside that metadata lock.
+## Guides and support
 
-A workspace lock protects restore recovery and overlapping action operations in
-the same workspace. All locks are released before the build runs. Jobs must use
-private destination paths, including any home-directory cache paths; this action
-does not isolate destinations that jobs deliberately share. No cache throughput
-or power-loss durability claim is made.
+- [Runner setup](docs/RUNNERS.md): mounts, permissions, persistent storage, and ARC.
+- [Usage](docs/USAGE.md): keys, fallback order, paths, outputs, cleanup, and migration.
+- [Troubleshooting](docs/TROUBLESHOOTING.md): misses, missing saves, permissions, and limits.
+- [Specification](docs/SPEC.md), [implementation](docs/IMPLEMENTATION.md), and
+  [verification coverage](docs/TESTING.md): the contract and technical boundaries.
+- [Report a problem](https://github.com/WhiteKiwi/actions-volume-cache/issues/new):
+  include the pinned SHA, runner OS/architecture, sanitized step configuration,
+  cache warnings, and whether the problem occurs on restore or post-job save.
+  Keep credentials and cached file contents out of reports.
 
-The new lock protocol uses `actions-volume-cache/v2`. Previous `v1` data stays
-untouched and is a cold miss for this implementation. It is outside v2 cleanup
-and `max-cache-size` accounting but still occupies disk space. Existing v1 clients
-can keep using their separate subtree; this is not an automatic data migration.
+## Development
 
-Restore uses prepared copies and a rollback journal. Recoverable merge failures
-roll back; an unrecoverable journal/rollback error fails the action instead of
-allowing a partially restored workspace to proceed. A later invocation to the
-same path recovers an interrupted merge before attempting any hit or miss.
-
-For development with Node 24, pnpm 11.25.0, and Go 1.27.2:
+Contributors use Linux, Node 24, pnpm 11.25.0, and Go 1.27.2. Consumers run the
+committed distributables and do not build the action.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -146,15 +192,5 @@ pnpm check
 pnpm exec prettier --check .
 ```
 
-`pnpm check` type-checks, builds the distributables, and runs functional,
-multi-process, process-death, and standalone bundle tests. The CI workflow also
-checks real successful/failed GitHub job main/post behavior and reproducible
-distributables. See the acceptance plan for coverage and remaining qualification.
-
-## Documentation
-
-- [Specification](docs/SPEC.md)
-- [Implementation design and support limits](docs/IMPLEMENTATION.md)
-- [Development workflow and implementation plan](docs/DEVELOPMENT.md)
-- [Acceptance and verification plan](docs/TESTING.md)
-- [Repository instructions for agents](AGENTS.md)
+Read the [development guide](docs/DEVELOPMENT.md) and [repository instructions](AGENTS.md)
+before changing behavior or generated artifacts.

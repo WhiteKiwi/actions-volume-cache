@@ -2,8 +2,8 @@
 
 ## Current state
 
-An initial implementation exists. There is no tagged release; replace `@v1` in
-examples with a reviewed commit SHA for evaluation. Live ARC adoption and
+An initial implementation exists. The README and copyable example workflows pin
+a tested commit SHA; there is no tagged release yet. Live ARC adoption and
 representative performance measurements remain separate tasks.
 
 Read [SPEC.md](SPEC.md) for the agreed behavior and [TESTING.md](TESTING.md) for
@@ -95,6 +95,19 @@ Keep README examples and input/output tables consistent with the specification.
 Update the status only when implementation and corresponding checks exist.
 Record intentional differences from official GitHub cache behavior explicitly.
 Do not mark acceptance scenarios passed based only on a design or source review.
+
+Keep the README focused on first use and the input/output contract. Update the
+linked [runner setup](RUNNERS.md), [usage](USAGE.md), and
+[troubleshooting](TROUBLESHOOTING.md) guides when relevant behavior changes.
+Copyable workflows live in `examples/`; the README quick-start YAML must match
+`examples/npm.yml`. Keep their prerequisites and runner-selection comments clear.
+These are consumer templates, not additional workflows deployed in this repo.
+
+Pin examples to an existing reviewed commit with passing CI. Update every example
+reference together when deliberately choosing a newer baseline. Do not substitute
+an uncreated release tag or pin to an untested documentation commit. Keep third-party
+action references pinned as well. Distinguish a cache storage-format version from
+an action release tag, and do not infer a project license from a bundled runtime notice.
 
 For documentation-only work, use the current checkout's available tools to check
 relative links, code fences, option names, whitespace, and the actual Git diff.

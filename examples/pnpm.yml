@@ -1,0 +1,34 @@
+# Requires a committed pnpm-lock.yaml compatible with the chosen pnpm version.
+# Match the pnpm version to your project's packageManager field.
+name: pnpm CI with local cache
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: [self-hosted, linux] # Replace with your runner labels or ARC scale-set name.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Install the project's pnpm version
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pnpm" pnpm@11.25.0
+          echo "$RUNNER_TEMP/pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Restore and update pnpm store
+        id: local-cache
+        uses: WhiteKiwi/actions-volume-cache@b8b00a6601529c337a7f70b82a6dc7ad10c7519d
+        with:
+          volume-path: /cache
+          path: .cache/pnpm-store
+          key: ${{ runner.os }}-${{ runner.arch }}-node24-pnpm11-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-node24-pnpm11-
+      - run: pnpm install --frozen-lockfile --store-dir .cache/pnpm-store
+      - run: pnpm test
