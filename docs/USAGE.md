@@ -14,24 +14,25 @@ or a full commit SHA instead.
 | Reference                               | Behavior                                                             |
 | --------------------------------------- | -------------------------------------------------------------------- |
 | `WhiteKiwi/actions-volume-cache@v1`     | Follow approved compatible 1.x releases through the moving `v1` tag. |
-| `WhiteKiwi/actions-volume-cache@v1.0.0` | Select the first release through a fixed version tag.                |
+| `WhiteKiwi/actions-volume-cache@v1.0.1` | Select the MIT-licensed release through a fixed version tag.         |
 | A full 40-character commit SHA          | Select one exact commit independently of tag movement.               |
 
-`v1` and `v1.0.0` are Git tags under `refs/tags/`, not branches under
+`v1` and `v1.0.1` are Git tags under `refs/tags/`, not branches under
 `refs/heads/`. Only the major alias moves during compatible releases. Exact
 release tags identify one release and are never reused or moved. Main can
-contain development commits that have not been released to `v1`.
+contain development commits that have not been released to `v1`. The first
+release, `v1.0.0`, remains available at its original commit.
 
 For a fixed version, change the action step to:
 
 ```yaml
-uses: WhiteKiwi/actions-volume-cache@v1.0.0
+uses: WhiteKiwi/actions-volume-cache@v1.0.1
 ```
 
 For full SHA pinning, find the commit for the chosen version in its
 [release](https://github.com/WhiteKiwi/actions-volume-cache/releases), verify it
 belongs to this repository, and use that full commit SHA after `@`. For example,
-after fetching this repository's tags, `git rev-parse 'v1.0.0^{commit}'` prints the
+after fetching this repository's tags, `git rev-parse 'v1.0.1^{commit}'` prints the
 release commit even when the version tag is annotated. A major tag can move;
 a commit SHA keeps selecting the same code. Third-party actions in the templates
 also use readable major tags and can be pinned independently if needed.
