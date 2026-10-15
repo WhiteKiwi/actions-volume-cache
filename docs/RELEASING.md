@@ -19,7 +19,8 @@ commits prepare a proposal and do not immediately release the action.
    before publication.
 3. The workflow explicitly starts **CI** on that bot branch. GitHub suppresses
    ordinary PR events created with `GITHUB_TOKEN`; `workflow_dispatch` avoids
-   requiring a separate PAT or App key. Inspect the PR's exact head checks.
+   requiring a separate PAT or App key. An aggregate **Release PR CI** commit
+   status links the dispatch run back to the PR; inspect that exact head status.
 4. Review and squash-merge the release PR when ready. Do not add runtime source,
    workflow, or documentation edits to it; make those changes in ordinary PRs.
 5. Wait for **CI** on the actual main merge commit. Only a successful main-push
@@ -57,7 +58,9 @@ individual jobs declare the write permissions they need.
 The publish job needs contents write and read access to CI/PR records. Only the
 proposal job receives Actions write to dispatch bot-PR CI. Release completion
 receives Issues write for its two release labels. Ordinary CI and downloaded
-consumer checks keep read-only contents access.
+consumer checks keep read-only contents access. The release-PR CI reporter gets
+only Statuses write, checks out no code, and reports the aggregate native test
+and lifecycle results on the tested commit.
 
 ## Tag and publication policy
 
