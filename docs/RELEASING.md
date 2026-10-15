@@ -13,8 +13,10 @@ commits prepare a proposal and do not immediately release the action.
    next releasable change.
 2. After successful main-push **CI**, **Release** runs Release Please in
    proposal-only mode. It maintains one bot-authored PR on
-   `release-please--branches--main` with the package version, CHANGELOG, and
-   `.release-please-manifest.json` changes.
+   `release-please--branches--main--components--actions-volume-cache` with the package version, CHANGELOG, and
+   `.release-please-manifest.json` changes. Preserve the generated changelog
+   formatting; it is excluded from Prettier while its version section is checked
+   before publication.
 3. The workflow explicitly starts **CI** on that bot branch. GitHub suppresses
    ordinary PR events created with `GITHUB_TOKEN`; `workflow_dispatch` avoids
    requiring a separate PAT or App key. Inspect the PR's exact head checks.

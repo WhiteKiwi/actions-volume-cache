@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { appendFile, readFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
-import { isReleasePR, marketplaceVersion, publishRelease } from './release-lib.mjs';
+import { RELEASE_BRANCH, isReleasePR, marketplaceVersion, publishRelease } from './release-lib.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY;
 assert.equal(repo, 'WhiteKiwi/actions-volume-cache');
@@ -85,7 +85,7 @@ if (command === 'publish') {
   const prs = await api('GET', '/pulls?state=open&base=main&per_page=100');
   for (const pr of prs.filter(
     (item) =>
-      item.head.ref === 'release-please--branches--main' &&
+      item.head.ref === RELEASE_BRANCH &&
       item.head.repo?.full_name === repo &&
       item.user.login === 'github-actions[bot]',
   )) {

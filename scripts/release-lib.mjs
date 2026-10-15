@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 
+export const RELEASE_BRANCH = 'release-please--branches--main--components--actions-volume-cache';
+
 export function versionParts(value) {
   assert.equal(typeof value, 'string');
   assert.equal(value.trim(), value, 'Version cannot contain surrounding whitespace');
@@ -55,7 +57,7 @@ export function isReleasePR(pr, repo, sha) {
     pr.merge_commit_sha === sha &&
     pr.base.ref === 'main' &&
     pr.head.repo?.full_name === repo &&
-    pr.head.ref === 'release-please--branches--main' &&
+    pr.head.ref === RELEASE_BRANCH &&
     pr.user.login === 'github-actions[bot]' &&
     pr.labels.some((label) => ['autorelease: pending', 'autorelease: tagged'].includes(label.name))
   );
