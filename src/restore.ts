@@ -9,10 +9,12 @@ import {
   safeDirectory,
   safeRelative,
   statOptional,
+  within,
   writeJson,
 } from './fs.js';
 import { ensureMergeable, materialize } from './tree.js';
-import { InputError, type TestHooks, type TreeNode } from './types.js';
+import { collapse, patterns, searchRoot, validateTarget } from './paths.js';
+import { InputError, type Options, type TestHooks, type TreeNode } from './types.js';
 
 interface PlanNode {
   relative: string;
@@ -24,7 +26,7 @@ interface PlanNode {
 interface Journal {
   schema: 1;
   destination: string;
-  phase: 'applying' | 'committed';
+  phase: 'preparing' | 'applying' | 'committed';
   nodes: PlanNode[];
 }
 
@@ -84,9 +86,10 @@ function validateJournal(value: unknown, destination: string): Journal {
     !journal ||
     journal.schema !== 1 ||
     journal.destination !== destination ||
-    !['applying', 'committed'].includes(journal.phase) ||
+    !['preparing', 'applying', 'committed'].includes(journal.phase) ||
     !Array.isArray(journal.nodes) ||
-    journal.nodes.length > 100_000
+    journal.nodes.length > 100_000 ||
+    (journal.phase === 'preparing' && journal.nodes.length !== 0)
   )
     throw new InputError('Invalid restore recovery journal');
   const seen = new Set<string>();
@@ -143,6 +146,69 @@ export async function recoverRestores(destination: string): Promise<void> {
   }
 }
 
+// Recovery cannot depend on live glob matches or a surviving cache index: a
+// killed restore may have moved the destination into its backup already.
+export async function recoverSelectedRestores(options: Options): Promise<void> {
+  const roots = collapse(
+    patterns(options).positive.map((pattern) => {
+      const destination = searchRoot(pattern);
+      return { id: destination, destination };
+    }),
+  ).map((unit) => unit.destination);
+  const visited = new Set<string>();
+  const transactionName = /^\.avc-restore-[a-f0-9]{16}-[a-f0-9-]{36}$/;
+  async function scan(directory: string, recursive: boolean): Promise<void> {
+    await noSymlinkAncestors(directory);
+    const stat = await statOptional(directory);
+    if (!stat?.isDirectory() || stat.isSymbolicLink()) return;
+    for (const child of await fs.readdir(directory, { withFileTypes: true })) {
+      const name = child.name;
+      const file = path.join(directory, name);
+      if (transactionName.test(name)) {
+        if (!child.isDirectory()) continue;
+        if (
+          !recursive &&
+          !roots.some((root) => path.dirname(root) === directory && name.startsWith(prefix(root)))
+        )
+          continue;
+        if (visited.has(file)) continue;
+        visited.add(file);
+        await noSymlinkAncestors(file, true);
+        const journalFile = path.join(file, 'journal.json');
+        if (!(await statOptional(journalFile))) {
+          // A name alone does not identify an unknown directory as ours.
+          // Known-root preparation is handled by recoverRestores(root).
+          continue;
+        }
+        const value = JSON.parse((await readBounded(journalFile, 32 * 1024 * 1024)).toString());
+        if (
+          typeof value?.destination !== 'string' ||
+          path.dirname(value.destination) !== directory ||
+          !name.startsWith(prefix(value.destination))
+        )
+          throw new InputError('Invalid restore recovery location');
+        if (!roots.some((root) => within(root, value.destination))) continue;
+        await validateTarget(value.destination, options);
+        await recoverRestores(value.destination);
+      } else if (recursive && child.isDirectory()) await scan(file, true);
+    }
+  }
+  try {
+    // Scan ancestors shallowly for root journals, and each selected search tree
+    // recursively without following directory symlinks or transaction payloads.
+    for (const root of roots) {
+      await recoverRestores(root);
+      await scan(path.dirname(root), false);
+      await scan(root, true);
+    }
+  } catch (error) {
+    if (error instanceof InputError) throw error;
+    throw new InputError(
+      'Cannot inspect or recover interrupted restores; do not continue this workspace',
+    );
+  }
+}
+
 export async function restoreMerged(
   payload: string,
   destination: string,
@@ -158,6 +224,14 @@ export async function restoreMerged(
   let journal: Journal | undefined;
   let preserve = false;
   try {
+    // Identify preparation before copying: discovery can recover this even if
+    // the cache entry or the live destination no longer exists after SIGKILL.
+    await writeJson(path.join(transaction, 'journal.json'), {
+      schema: 1,
+      destination,
+      phase: 'preparing',
+      nodes: [],
+    });
     await materialize(payload, path.join(transaction, 'payload'), nodes);
     await hooks.point?.('restore-prepared');
     await fs.mkdir(path.join(transaction, 'backup'), { mode: 0o700 });
@@ -180,8 +254,10 @@ export async function restoreMerged(
       if (node.kind === 'directory') {
         if (!plan[index]!.hadOld) await fs.mkdir(target, { mode: 0o700 });
       } else {
-        if (plan[index]!.hadOld)
+        if (plan[index]!.hadOld) {
           await fs.rename(target, path.join(transaction, 'backup', String(index)));
+          await hooks.point?.('restore-backed-up');
+        }
         await fs.rename(path.join(transaction, 'payload', node.relative), target);
       }
       await hooks.point?.('restore-node');

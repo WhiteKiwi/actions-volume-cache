@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import { save, safeMessage } from './cache.js';
+import { realLocation } from './fs.js';
 import { InputError, type Options } from './types.js';
 
 async function post(): Promise<void> {
@@ -12,7 +13,8 @@ async function post(): Promise<void> {
     const options = JSON.parse(state) as Options;
     if (
       options.repository !== process.env.GITHUB_REPOSITORY_ID ||
-      options.workspace !== process.env.GITHUB_WORKSPACE
+      !process.env.GITHUB_WORKSPACE ||
+      options.workspace !== (await realLocation(process.env.GITHUB_WORKSPACE))
     )
       throw new InputError('Action state context changed');
     await save(options, core);

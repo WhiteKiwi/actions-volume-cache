@@ -1,7 +1,7 @@
 import path from 'node:path';
-import { removeOwned, statOptional } from './fs.js';
+import { removeOwned, statOptional, within } from './fs.js';
 import { selectUnits, validateOptions } from './paths.js';
-import { recoverRestores, restoreMerged } from './restore.js';
+import { recoverSelectedRestores, restoreMerged } from './restore.js';
 import { Store } from './store.js';
 import { hasData, selectedNodes, snapshot } from './tree.js';
 import {
@@ -46,10 +46,13 @@ export async function restore(
   report: Reporter = silent,
   hooks: TestHooks = {},
 ): Promise<'' | 'true' | 'false'> {
-  await validateOptions(options);
+  options = await validateOptions(options);
   const store = new Store(options, report);
   return store.locked(async () => {
     await hooks.point?.('lock-acquired');
+    // Journals must be recovered before glob expansion or parent selection can
+    // hide a temporarily missing leaf or a descendant transaction.
+    await recoverSelectedRestores(options);
     await clean(store);
     const records = await store.list();
     const ids = records
@@ -57,10 +60,10 @@ export async function restore(
       .map((record) => record.entry.path);
     const selection = await selectUnits(options, ids, true);
     let restored = 0;
+    const restoredPaths: string[] = [];
     let exact = !selection.unmatched;
     for (const unit of selection.units) {
-      // Recovery is required even when cleanup or a miss removed the old source.
-      await recoverRestores(unit.destination);
+      if (restoredPaths.some((parent) => within(parent, unit.destination))) continue;
       let found = false;
       for (const record of candidates(records, options, unit.id)) {
         try {
@@ -79,6 +82,7 @@ export async function restore(
             report.warning('Cache restored but access timestamp could not be updated');
           }
           restored++;
+          restoredPaths.push(unit.destination);
           found = true;
           if (record.entry.key !== options.key) exact = false;
           report.info(`Restored ${unit.id} using key ${record.entry.key}`);
@@ -101,10 +105,11 @@ export async function save(
   report: Reporter = silent,
   hooks: TestHooks = {},
 ): Promise<void> {
-  await validateOptions(options);
+  options = await validateOptions(options);
   const store = new Store(options, report);
   await store.locked(async () => {
     await hooks.point?.('lock-acquired');
+    await recoverSelectedRestores(options);
     // Run cleanup before staging; it may reclaim abandoned copies from killed writers.
     await clean(store);
     const selection = await selectUnits(options, [], false);
@@ -119,7 +124,7 @@ export async function save(
           continue;
         }
         await hooks.point?.('save-prepared');
-        await store.publish(staging, options.key, unit.id, manifest);
+        await store.publish(staging, options.key, unit.id, manifest, hooks);
         count++;
         report.info(`Saved ${unit.id} using key ${options.key}`);
         await hooks.point?.('save-published');

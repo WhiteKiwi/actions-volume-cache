@@ -7,8 +7,7 @@ import { InputError } from './types.js';
 async function main(): Promise<void> {
   core.setOutput('cache-hit', '');
   try {
-    const options = optionsFrom((name) => core.getInput(name));
-    await validateOptions(options);
+    const options = await validateOptions(optionsFrom((name) => core.getInput(name)));
     core.saveState('options', JSON.stringify(options));
     try {
       core.setOutput('cache-hit', await restore(options, core));

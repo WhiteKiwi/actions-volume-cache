@@ -21,6 +21,7 @@ import {
   type Options,
   type Reporter,
   type StoredEntry,
+  type TestHooks,
 } from './types.js';
 
 const HASH = /^[a-f0-9]{64}$/;
@@ -55,9 +56,10 @@ export class Store {
     return path.join(this.root, 'repos', repository, hash(key), hash(logical));
   }
 
-  async list(): Promise<StoredEntry[]> {
-    const result: StoredEntry[] = [];
-    this.corrupt = false;
+  private async directories(): Promise<
+    { repository: string; keyHash: string; pathHash: string; directory: string }[]
+  > {
+    const result = [];
     const base = path.join(this.root, 'repos');
     for (const repository of await fs.readdir(base)) {
       if (!/^\d+$/.test(repository)) continue;
@@ -70,43 +72,52 @@ export class Store {
         for (const pathHash of await fs.readdir(keyPath)) {
           if (!HASH.test(pathHash)) continue;
           const directory = path.join(keyPath, pathHash);
-          try {
-            await noSymlinkAncestors(directory, true);
-            const pointer = path.join(directory, 'current.json');
-            if (!(await statOptional(pointer))) continue;
-            const entry = JSON.parse((await readBounded(pointer, 16384)).toString()) as Entry;
-            if (
-              !entry ||
-              entry.schema !== 1 ||
-              entry.repository !== repository ||
-              typeof entry.key !== 'string' ||
-              entry.key.length > 512 ||
-              typeof entry.path !== 'string' ||
-              entry.path.length > 8192 ||
-              /[\x00-\x1f]/.test(entry.path) ||
-              hash(entry.key) !== keyHash ||
-              hash(entry.path) !== pathHash ||
-              !UUID.test(entry.generation) ||
-              !HASH.test(entry.manifestDigest) ||
-              !Number.isSafeInteger(entry.sequence) ||
-              entry.sequence < 1 ||
-              !Number.isSafeInteger(entry.bytes) ||
-              entry.bytes < 0 ||
-              !Number.isFinite(entry.publishedAt) ||
-              !Number.isFinite(entry.lastUsedAt)
-            )
-              throw new Error('Invalid entry metadata');
-            destination(entry.path, this.options); // Validate logical identity without trusting it as a raw path.
-            result.push({ entry, directory });
-          } catch (error) {
-            if (error instanceof InputError && String(error.message).startsWith('Unsafe directory'))
-              throw error;
-            this.corrupt = true;
-            this.report.warning(
-              `Ignoring invalid cache metadata in ${repository}/${keyHash.slice(0, 12)}/${pathHash.slice(0, 12)}`,
-            );
-          }
+          await noSymlinkAncestors(directory, true);
+          result.push({ repository, keyHash, pathHash, directory });
         }
+      }
+    }
+    return result;
+  }
+
+  async list(): Promise<StoredEntry[]> {
+    const result: StoredEntry[] = [];
+    this.corrupt = false;
+    for (const { repository, keyHash, pathHash, directory } of await this.directories()) {
+      try {
+        const pointer = path.join(directory, 'current.json');
+        if (!(await statOptional(pointer))) continue;
+        const entry = JSON.parse((await readBounded(pointer, 16384)).toString()) as Entry;
+        if (
+          !entry ||
+          entry.schema !== 1 ||
+          entry.repository !== repository ||
+          typeof entry.key !== 'string' ||
+          entry.key.length > 512 ||
+          typeof entry.path !== 'string' ||
+          entry.path.length > 8192 ||
+          /[\x00-\x1f]/.test(entry.path) ||
+          hash(entry.key) !== keyHash ||
+          hash(entry.path) !== pathHash ||
+          !UUID.test(entry.generation) ||
+          !HASH.test(entry.manifestDigest) ||
+          !Number.isSafeInteger(entry.sequence) ||
+          entry.sequence < 1 ||
+          !Number.isSafeInteger(entry.bytes) ||
+          entry.bytes < 0 ||
+          !Number.isFinite(entry.publishedAt) ||
+          !Number.isFinite(entry.lastUsedAt)
+        )
+          throw new Error('Invalid entry metadata');
+        destination(entry.path, this.options); // Validate logical identity without trusting it as a raw path.
+        result.push({ entry, directory });
+      } catch (error) {
+        if (error instanceof InputError && String(error.message).startsWith('Unsafe directory'))
+          throw error;
+        this.corrupt = true;
+        this.report.warning(
+          `Ignoring invalid cache metadata in ${repository}/${keyHash.slice(0, 12)}/${pathHash.slice(0, 12)}`,
+        );
       }
     }
     return result;
@@ -139,7 +150,13 @@ export class Store {
     return directory;
   }
 
-  async publish(staging: string, key: string, logical: string, manifest: Manifest): Promise<void> {
+  async publish(
+    staging: string,
+    key: string,
+    logical: string,
+    manifest: Manifest,
+    hooks: TestHooks = {},
+  ): Promise<void> {
     const bytes = payloadBytes(manifest.nodes);
     if (!Number.isSafeInteger(bytes))
       throw new Error('Cache payload size exceeds safe accounting range');
@@ -181,8 +198,18 @@ export class Store {
       bytes,
       manifestDigest: hash(manifestText),
     };
-    // The only commit point. Until this rename, current.json still names the old generation.
-    await writeJson(path.join(directory, 'current.json'), entry);
+    try {
+      await hooks.point?.('publication-staged');
+      // The only commit point. Until this rename, current.json still names the old generation.
+      await writeJson(path.join(directory, 'current.json'), entry);
+    } catch (error) {
+      try {
+        await removeOwned(this.root, target);
+      } catch {
+        this.report.warning('Unpublished generation will be reclaimed on cleanup');
+      }
+      throw error;
+    }
     if (old) {
       try {
         await removeOwned(this.root, this.generation(old));
@@ -197,6 +224,21 @@ export class Store {
   async cleanup(): Promise<void> {
     const cutoff = Date.now() - this.options.retentionDays * 86400000;
     const records = await this.list();
+    const indexed = new Map(records.map((record) => [record.directory, record]));
+    // A process can die after moving staging into generations but before the
+    // first pointer exists. Such entries are deliberately absent from list().
+    for (const { directory } of await this.directories()) {
+      if (!indexed.has(directory) && !(await statOptional(path.join(directory, 'current.json')))) {
+        await removeOwned(this.root, directory);
+        continue;
+      }
+      for (const name of await fs.readdir(directory)) {
+        const temporary = /^current\.json\.(.+)\.tmp$/.exec(name);
+        if (temporary && UUID.test(temporary[1]!))
+          await removeOwned(this.root, path.join(directory, name));
+      }
+      // Preserve corrupt pointers: their referenced generation is unknown.
+    }
     for (const record of records) {
       if (record.entry.lastUsedAt <= cutoff) {
         await removeOwned(this.root, record.directory);

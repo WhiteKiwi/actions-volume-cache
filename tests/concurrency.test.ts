@@ -215,3 +215,103 @@ test('interrupted destination merge is rolled back from its journal on the next 
     await f.close();
   }
 });
+
+test('cleanup reclaims SIGKILL generations before first publication and during replacement', async () => {
+  for (const existing of [false, true]) {
+    const f = await fixture({ autoCleanup: false });
+    let child: ChildProcess | undefined;
+    try {
+      if (existing) {
+        await f.file('target/a', 'committed');
+        await save(f.options);
+      }
+      await f.file('target/a', 'uncommitted');
+      const signal = path.join(f.root, 'publication-kill');
+      const killed = worker('save', f.options, signal, 'publication-staged');
+      child = killed.child;
+      await signaled(signal);
+      await terminate(child);
+      await killed.completed;
+      const store = new Store(f.options, f.reporter);
+      const directory = store.entryDirectory(
+        f.options.repository,
+        f.options.key,
+        'workspace:target',
+      );
+      const pointerTemporary = path.join(
+        directory,
+        'current.json.00000000-0000-0000-0000-000000000000.tmp',
+      );
+      await fs.writeFile(pointerTemporary, 'interrupted metadata write');
+      assert.equal(
+        (await fs.readdir(path.join(directory, 'generations'))).length,
+        existing ? 2 : 1,
+      );
+      await f.reset();
+      assert.equal(await restore(f.options), existing ? 'true' : '');
+      assert.ok(
+        (await fs.stat(pointerTemporary)).isFile(),
+        'disabled cleanup preserves abandoned files',
+      );
+      if (existing) assert.equal(await f.read('target/a'), 'committed');
+      await f.reset();
+      assert.equal(await restore({ ...f.options, autoCleanup: true }), existing ? 'true' : '');
+      await assert.rejects(fs.stat(pointerTemporary), { code: 'ENOENT' });
+      if (existing) {
+        assert.equal(await f.read('target/a'), 'committed');
+        await store.locked(async () => {
+          const records = await store.list();
+          assert.deepEqual(await fs.readdir(path.join(directory, 'generations')), [
+            records[0]!.entry.generation,
+          ]);
+        });
+      } else await assert.rejects(fs.stat(directory), { code: 'ENOENT' });
+      assert.deepEqual(await fs.readdir(path.join(store.root, 'staging')), []);
+    } finally {
+      if (child) await terminate(child);
+      await f.close();
+    }
+  }
+});
+
+test('recovery precedes glob discovery and parent collapsing after the source cache disappears', async () => {
+  for (const leaf of [false, true]) {
+    const f = await fixture({ paths: [leaf ? 'target/a' : 'target/child'] });
+    let child: ChildProcess | undefined;
+    try {
+      const file = leaf ? 'target/a' : 'target/child/a';
+      await f.file(file, 'cached');
+      await save(f.options);
+      await f.reset();
+      await f.file(file, 'original');
+      const signal = path.join(f.root, 'recovery-kill');
+      const killed = worker(
+        'restore',
+        f.options,
+        signal,
+        leaf ? 'restore-backed-up' : 'restore-leaf',
+      );
+      child = killed.child;
+      await signaled(signal);
+      await terminate(child);
+      await killed.completed;
+      if (leaf) await assert.rejects(f.read(file), { code: 'ENOENT' });
+      else assert.equal(await f.read(file), 'cached');
+      const store = new Store(f.options, f.reporter);
+      await store.locked(async () => {
+        for (const record of await store.list()) await fs.rm(record.directory, { recursive: true });
+      });
+      const paths = leaf ? ['target/*'] : ['target', 'target/**'];
+      assert.equal(await restore({ ...f.options, paths }), '');
+      assert.equal(await f.read(file), 'original');
+      assert.ok(
+        !(await fs.readdir(path.join(f.options.workspace, 'target'))).some((name) =>
+          name.startsWith('.avc-restore-'),
+        ),
+      );
+    } finally {
+      if (child) await terminate(child);
+      await f.close();
+    }
+  }
+});
