@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+
+# Local cache data and execution artifacts.
+/.cache/
+/tmp/
+/test-results/
+/coverage/
+
+# Editor and operating-system files.
+.DS_Store
+*.swp
