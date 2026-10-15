@@ -39,7 +39,7 @@ runner plus tsx; fixtures live only in `.cache/tests`, and the pnpm store is loc
 to `.cache/pnpm-store`.
 
 Use `pnpm exec prettier --write .` to format source/configuration/docs. Generated
-bundles and lockfiles are excluded from formatting. Run `gofmt -w lock-helper` when
+bundles, lockfiles, and the Release Please changelog are excluded from formatting. Run `gofmt -w lock-helper` when
 changing Go source. The CI workflow verifies reproducible distributables, local
 acceptance tests, and real GitHub post-job lifecycle behavior on native x64 and
 arm64 Linux runners using a test-only post observer. A standalone test runs with

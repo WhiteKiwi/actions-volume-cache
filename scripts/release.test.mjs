@@ -18,7 +18,10 @@ function fixture() {
     merged_at: '2026-10-15T12:00:00Z',
     merge_commit_sha: sha,
     base: { ref: 'main' },
-    head: { ref: 'release-please--branches--main', repo: { full_name: repo } },
+    head: {
+      ref: 'release-please--branches--main--components--actions-volume-cache',
+      repo: { full_name: repo },
+    },
     user: { login: 'github-actions[bot]' },
     labels: [{ name: 'autorelease: pending' }],
   };
