@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.2](https://github.com/WhiteKiwi/actions-volume-cache/compare/v1.0.1...v1.0.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **ci:** automate reviewed action releases ([#6](https://github.com/WhiteKiwi/actions-volume-cache/issues/6)) ([dba5d82](https://github.com/WhiteKiwi/actions-volume-cache/commit/dba5d820c39e9e1822bc9e0085386cc82c31cac0))
+* **ci:** report dispatched release checks on the pull request ([#9](https://github.com/WhiteKiwi/actions-volume-cache/issues/9)) ([aafe0b4](https://github.com/WhiteKiwi/actions-volume-cache/commit/aafe0b4dc967ac5be03a954f649fc868f08991c0))
+* **ci:** validate the generated release proposal branch ([#8](https://github.com/WhiteKiwi/actions-volume-cache/issues/8)) ([0f2fab8](https://github.com/WhiteKiwi/actions-volume-cache/commit/0f2fab87f760eff27e4896e0d23d323d3087f99b))
+
 ## v1.0.1 — 2026-10-15
 
 - License the project under MIT and retain bundled third-party notices.
