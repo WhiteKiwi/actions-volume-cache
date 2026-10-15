@@ -1,6 +1,15 @@
-# actions-volume-cache
+<p align="center">
+  <img src="assets/mark.svg" width="80" height="80" alt="Actions Volume Cache icon">
+</p>
 
+<h1 align="center">Actions Volume Cache</h1>
+
+<p align="center">Local-volume caching for Linux self-hosted GitHub Actions runners.</p>
+
+[![Release](https://img.shields.io/github/v/release/WhiteKiwi/actions-volume-cache?color=238636)](https://github.com/WhiteKiwi/actions-volume-cache/releases/latest)
 [![CI](https://github.com/WhiteKiwi/actions-volume-cache/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/WhiteKiwi/actions-volume-cache/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform: Linux x64 and arm64](https://img.shields.io/badge/platform-Linux_x64_%7C_arm64-555.svg)
 
 Restore and update **uncompressed local caches** on persistent volumes for Linux
 GitHub Actions self-hosted runners.
@@ -11,8 +20,8 @@ GitHub Actions self-hosted runners.
 - Use one action with bundled Linux x64/arm64 lock helpers. The action needs no
   external `flock`, Go toolchain, compiler, Docker, or elevated privileges.
 
-**Versioning:** use `@v1` for compatible 1.x updates, or `@v1.0.0` to select the
-[first release](https://github.com/WhiteKiwi/actions-volume-cache/releases/tag/v1.0.0).
+**Versioning:** use `@v1` for compatible 1.x updates, or `@v1.0.1` to select the
+[versioned release](https://github.com/WhiteKiwi/actions-volume-cache/releases/tag/v1.0.1).
 Both are Git tags. Native x64/arm64 CI covers the action and GitHub post-job
 lifecycle. Live ARC deployment and performance measurements remain separate
 qualification work. See [versions and upgrades](docs/USAGE.md#versions-and-upgrades)
@@ -28,7 +37,9 @@ for fixed versions and optional full commit-SHA pinning.
 - [Versions and upgrades](#versions-and-upgrades)
 - [Differences from actions/cache](#differences-from-actionscache)
 - [Guides and support](#guides-and-support)
+- [Contributing](#contributing)
 - [Development](#development)
+- [License](#license)
 
 ## Quick start
 
@@ -199,6 +210,13 @@ managed cleanup. See [shared tool caches](docs/USAGE.md#shared-tool-caches).
   cache warnings, and whether the problem occurs on restore or post-job save.
   Keep credentials and cached file contents out of reports.
 
+## Contributing
+
+Bug reports, documentation fixes, and focused pull requests are welcome. Read
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, verification, and report details.
+For security concerns, follow [SECURITY.md](SECURITY.md) instead of posting
+sensitive details in a public issue.
+
 ## Development
 
 Contributors use Linux, Node 24, pnpm 11.25.0, and Go 1.27.2. Consumers run the
@@ -212,3 +230,8 @@ pnpm exec prettier --check .
 
 Read the [development guide](docs/DEVELOPMENT.md) and [repository instructions](AGENTS.md)
 before changing behavior or generated artifacts.
+
+## License
+
+[MIT](LICENSE) © 2026 Jihoon Jang. Bundled third-party components retain their
+own license notices, including the [Go runtime license](dist/bin/LICENSE-Go.txt).

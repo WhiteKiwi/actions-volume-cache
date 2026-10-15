@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Actions Volume Cache</title>
+  <desc id="desc">Three green storage layers inside a rounded dark square.</desc>
+  <rect x="4" y="4" width="88" height="88" rx="24" fill="#0D2118"/>
+  <rect x="4.5" y="4.5" width="87" height="87" rx="23.5" stroke="#2EA043" stroke-opacity=".4"/>
+  <path d="M26 33v30c0 6 10 11 22 11s22-5 22-11V33" fill="#163D29"/>
+  <path d="M26 48c0 6 10 11 22 11s22-5 22-11M26 63c0 6 10 11 22 11s22-5 22-11M26 33v30M70 33v30" stroke="#56D364" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="48" cy="33" rx="22" ry="11" fill="#238636" stroke="#7EE787" stroke-width="3"/>
+</svg>
