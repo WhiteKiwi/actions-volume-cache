@@ -102,6 +102,17 @@ release may already exist; inspect the job summary and refs before recovery.
 A failed post-publication verification leaves the release pending and stops the
 next proposal. No automatic rollback or deletion of a published release occurs.
 
+If GitHub rejects tag creation with `403` because the tested source has different
+workflow files from current main, `GITHUB_TOKEN` cannot gain the required
+Workflows write scope. Do not add a broad PAT to CI to bypass this restriction.
+A maintainer with existing workflow-authorized Git credentials must first verify
+that exact source CI, publish the unchanged fixed tag/release, and advance its
+major alias using a targeted lease. Then resume **Release** with the original CI
+run ID to perform public-action verification, label completion, and Marketplace
+checking. This is an exceptional historical-commit recovery path; normal releases
+target the newly tested main merge commit. Never retarget an exact release tag
+to a different commit to make recovery pass.
+
 For an independent observation, run **Verify published action** and provide the
 major tag and optional expected full commit SHA. It uses synthetic temporary
 storage and does not inspect a real runner's cache volume.
