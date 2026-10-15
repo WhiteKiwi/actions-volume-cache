@@ -1,4 +1,4 @@
-# actions-local-cache
+# actions-volume-cache
 
 Reusable local filesystem caches for GitHub Actions self-hosted runners.
 
