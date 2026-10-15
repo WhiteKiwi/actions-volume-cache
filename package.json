@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
     "test": "node scripts/build.mjs && node --import tsx --test --test-concurrency=1 tests/*.test.ts",
-    "check": "pnpm typecheck && pnpm test"
+    "check": "pnpm typecheck && pnpm test && node --test scripts/release.test.mjs"
   },
   "dependencies": {
     "@actions/core": "^3.0.1",
