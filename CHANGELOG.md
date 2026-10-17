@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/WhiteKiwi/actions-volume-cache/compare/v1.0.3...v1.1.0) (2026-10-17)
+
+
+### Features
+
+* replace restored roots and remove payload hashing ([b70f522](https://github.com/WhiteKiwi/actions-volume-cache/commit/b70f522150ac80c05954b1be975aac46d4a25089))
+
 ## [1.0.3](https://github.com/WhiteKiwi/actions-volume-cache/compare/v1.0.2...v1.0.3) (2026-10-15)
 
 
