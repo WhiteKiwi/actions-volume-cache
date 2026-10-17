@@ -49,31 +49,31 @@ on GitHub before claiming successful-job or cancellation behavior is verified.
 
 ## Functional scenarios
 
-| Area               | Required evidence                                                                                                                                |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Required inputs    | Missing/empty `path`, `key`, or `volume-path` fails clearly; invalid option values follow the documented parser contract.                        |
-| First run          | Missing destination and no cache allow the build to run; a successful job creates entries.                                                       |
-| Exact hit          | Restore correct contents, report `'true'`, then save updated contents under the same key.                                                        |
-| Ordered fallbacks  | Respect candidate order, exact-before-prefix within a candidate, and latest successful save for prefix matches.                                  |
-| Independent paths  | Reuse one path when another is added; permit different matching keys per path; never bundle all paths into one invalidation hash.                |
-| Output aggregation | All primary hits yield `'true'`; partial/fallback restoration yields `'false'`; no restored units yields `''`.                                   |
-| Repository scope   | Same key/path in different repository namespaces cannot match through the action.                                                                |
-| Branch scope       | Same repository/key/path reuses data across branches; explicit branch keys can separate it.                                                      |
-| Glob paths         | Match files/directories, nested globs, exclusions, overlap cases, and saved paths absent from a fresh destination.                               |
-| Merge restore      | Cache overwrites ordinary-file collisions, adds cached entries, preserves destination-only and excluded files.                                   |
-| Fallback save      | Read an older key and publish the primary key without modifying the different fallback key.                                                      |
-| Missing save paths | Save available paths; if no eligible files exist, warn and leave existing cache entries intact.                                                  |
-| Metadata           | Preserve content, mtime, and ordinary read/write/execute bits; use current runner ownership.                                                     |
-| Links              | Preserve internal and external symbolic links as links without recursively copying their targets; handle broken links and cycles per the design. |
+| Area                | Required evidence                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Required inputs     | Missing/empty `path`, `key`, or `volume-path` fails clearly; invalid option values follow the documented parser contract.                                 |
+| First run           | Missing destination and no cache allow the build to run; a successful job creates entries.                                                                |
+| Exact hit           | Restore correct contents, report `'true'`, then save updated contents under the same key.                                                                 |
+| Ordered fallbacks   | Respect candidate order, exact-before-prefix within a candidate, and latest successful save for prefix matches.                                           |
+| Independent paths   | Reuse one path when another is added; permit different matching keys per path; never bundle all paths into one invalidation hash.                         |
+| Output aggregation  | All primary hits yield `'true'`; partial/fallback restoration yields `'false'`; no restored units yields `''`.                                            |
+| Repository scope    | Same key/path in different repository namespaces cannot match through the action.                                                                         |
+| Branch scope        | Same repository/key/path reuses data across branches; explicit branch keys can separate it.                                                               |
+| Glob paths          | Match files/directories, nested globs, exclusions, overlap cases, and saved paths absent from a fresh destination.                                        |
+| Replacement restore | Cache replaces each selected root, removes destination-only and existing excluded files, and preserves the old root on failed preparation or replacement. |
+| Fallback save       | Read an older key and publish the primary key without modifying the different fallback key.                                                               |
+| Missing save paths  | Save available paths; if no eligible files exist, warn and leave existing cache entries intact.                                                           |
+| Metadata            | Preserve content, mtime, and ordinary read/write/execute bits; use current runner ownership.                                                              |
+| Links               | Preserve internal and external symbolic links as links without recursively copying their targets; handle broken links and cycles per the design.          |
 
 ## Failure, safety, and concurrency scenarios
 
 | Area                       | Required evidence                                                                                                                                  |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Unsafe paths               | Reject root/home and parent/child/equal volume overlaps after normalization, globbing, and relevant symlink resolution.                            |
-| Destination redirection    | Existing symlinks and file/directory type collisions cannot redirect restoration outside allowed destinations.                                     |
+| Destination redirection    | Existing symlinks cannot redirect restoration outside allowed destinations; replace nested type collisions without following links.                |
 | Malformed metadata         | Bounded handling; no arbitrary path writes/deletions or unbounded reads; try remaining candidates where appropriate.                               |
-| Restore interruption       | Incomplete copies are not hits; demonstrate recovery for a failure during destination merge.                                                       |
+| Restore interruption       | Incomplete copies are not hits; recover before/after root installation and preserve committed replacements.                                        |
 | Save interruption          | A killed/crashed writer cannot corrupt a committed cache; abandoned staging stays invisible to readers.                                            |
 | Failed/cancelled job       | No updated entry is published; previous committed entries remain available.                                                                        |
 | Concurrent same-key writes | Independent jobs progress; complete publications are serialized/coordinated; the last publication wins per path without mixed entry contents.      |

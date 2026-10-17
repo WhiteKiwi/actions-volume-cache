@@ -102,7 +102,7 @@ and each project's build commands must be validated in your environment.
 
 | Requirement | What to provide                                                                                                                                          |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Platform    | Linux x64 or arm64, with an Actions runner supporting `node24`.                                                                                          |
+| Platform    | Linux x64 or arm64 with procfs (`/proc/self/fd`) and an Actions runner supporting `node24`.                                                              |
 | Storage     | A persistent local filesystem supporting kernel flock and atomic rename, mounted at a canonical absolute path.                                           |
 | Permissions | The runner user can read, write, and traverse the mount. Jobs sharing entries use compatible ownership; see [runner setup](docs/RUNNERS.md#permissions). |
 | Job paths   | Private writable destinations for every job, including any paths under `HOME`.                                                                           |
@@ -148,15 +148,17 @@ hit still gets updated after a successful job. See [output usage](docs/USAGE.md#
 - Entries are scoped by repository ID, key, and logical path. Adding a new path
   does not invalidate another path's entry. Same-repository branches share
   entries unless you include branch information in the key.
-- Restoration merges cached files into job destinations. Cached files replace
-  ordinary-file collisions; destination-only and excluded files remain.
+- On a hit, restoration replaces each selected destination as a whole, including
+  nonempty directories. Destination-only files and existing excluded files inside
+  that root are removed. A miss leaves the destination unchanged.
 - Jobs build using private copies. Readers can overlap; publication and deletion
   take an exclusive entry lock. Unrelated entries can copy concurrently.
 - Successful jobs publish under `key`, including exact hits and fallback
   restores. The last completed publication wins per key/path. Failed or cancelled
   jobs do not publish updates.
-- File times, ordinary permission bits, and symlinks are preserved. Links are not
-  traversed. Restored files belong to the current runner user.
+- Native copies preserve file times, ordinary permission bits, and symlinks. Links
+  are not traversed. Restored files belong to the current runner user. File contents
+  are not hashed or checksum-verified; same-size payload damage may go undetected.
 - Invalid inputs and unsafe destinations fail the action. Ordinary cache I/O
   failures warn and let the job continue. An unrecoverable restore journal fails
   the action so a partially restored workspace cannot proceed unnoticed.

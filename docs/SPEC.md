@@ -107,7 +107,7 @@ For each cache unit:
 2. If unavailable, evaluate `restore-keys` in input order.
 3. For each fallback, prefer an exact key; otherwise choose the most recently
    successfully saved matching key with that prefix and compatible path identity.
-4. Skip unreadable or damaged candidates and try remaining candidates.
+4. Skip candidates with unreadable data or detected structural damage and try remaining candidates.
 5. If no usable candidate exists, continue without cached data for that unit.
 
 The primary key does not implicitly become a prefix search. A workflow can list
@@ -132,17 +132,24 @@ data, or allow the build to create it after a miss.
 
 ### Destination behavior
 
-Restore by merging into the requested destination:
+On a usable hit, replace each selected destination root with a prepared private
+copy. This also replaces nonempty directories and file/directory type collisions.
+Destination-only files and existing excluded files beneath a replaced root are
+removed. Exclusions filter the restored content; they do not preserve existing
+content inside a replaced root. A miss or empty restore selection leaves the
+existing root unchanged. Select disposable cache paths, not directories containing
+other application data.
 
-- Cached files replace ordinary-file collisions.
-- Cached entries absent from the destination are added.
-- Destination-only files remain.
-- Excluded paths remain untouched.
+Prepare the complete copy beside the destination on the same mounted filesystem.
+Rename an existing destination into transaction-owned backup, rename the prepared
+root into place, commit the journal, then reclaim the backup. If replacement
+fails or is interrupted before commit, recover the previous root (or its absence).
+The two renames are not one atomic operation; jobs need private destinations.
 
-Never delete the destination tree as a shortcut for restoration. Do not expose
-partially staged or corrupt cache data as a usable hit. The implementation must
-define recovery if applying a staged restore fails partway through a merge;
-merging multiple destination files is not inherently atomic.
+Do not calculate or verify file-content checksums during save or restore. Keep
+bounded metadata validation, manifest checksums, file types, sizes, no-follow
+handling and source-change checks. Same-size payload corruption is not detected.
+Incomplete copies and detected structural damage are not usable hits.
 
 ## 5. Saving, failure, and concurrency
 
@@ -195,7 +202,7 @@ Validate glob matches as well as explicit inputs. Recursive traversal must not
 silently cross an unvalidated symlink into unrelated data. During restoration,
 existing destination symlinks must not redirect writes beyond allowed paths.
 Define behavior for file/directory/link type collisions in the implementation
-design; ordinary-file merge rules do not settle those cases.
+design; whole-root replacement must never follow a destination link into its target.
 
 Preserve:
 
@@ -216,8 +223,9 @@ By default, entries unused for 7 days since their last successful restore or
 save are eligible for removal. A lookup alone must not count as a successful
 restore. Protect active reads and publications regardless of retention age.
 
-Only this action's managed subtree is eligible. Do not clean `/cache/shared`,
-unrelated files, or job destinations. `auto-cleanup: false` disables automatic
+Retention cleanup only targets this action's managed subtree. Do not clean
+`/cache/shared`, unrelated files, or job destinations. Whole-root restoration
+separately replaces the selected job destination as described above. `auto-cleanup: false` disables automatic
 cleanup. No run means no cleanup; there is no installed daemon or schedule.
 Cleanup-only actions and Locron integration are deferred.
 
@@ -269,7 +277,7 @@ Resolve these without changing the agreed behavior silently:
 2. Logical path normalization, glob/exclusion grouping, overlaps, and per-path
    output aggregation when patterns match cached but currently absent entries.
 3. Manifest schema, compatibility/version rules, index lookup, and corruption detection.
-4. Locking, safe publication, active-reader protection, interrupted merges,
+4. Locking, safe publication, active-reader protection, interrupted replacements,
    cancellation, and abandoned temporary-data recovery on supported filesystems.
 5. Size parsing, accounting, concurrent reservations, and conflicting per-run settings.
 6. Link/type-collision handling, permission edge cases, and unsupported filesystem objects.
