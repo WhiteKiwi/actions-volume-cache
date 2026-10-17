@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.1.0](https://github.com/WhiteKiwi/actions-volume-cache/compare/v1.0.3...v1.1.0) (2026-10-17)
+
+
+Restore hits now replace each selected destination root in full. Destination-only
+and existing excluded files inside that root are removed; a miss leaves it unchanged.
+Use paths dedicated to disposable cache data.
+
+File-content SHA-256 calculation and verification are removed. Same-size payload
+corruption may be restored. Path, file-type, size, source-change and manifest
+integrity checks remain. Native copies require Linux procfs (`/proc/self/fd`), try
+reflink when supported and fall back to ordinary copying. Saves preserve the job
+source directory. New manifests use schema 2; legacy manifests and interrupted
+merge journals remain readable and recoverable by this version.
+
+### Features
+
+* replace restored roots and remove payload hashing ([b70f522](https://github.com/WhiteKiwi/actions-volume-cache/commit/b70f522150ac80c05954b1be975aac46d4a25089))
+
 ## [1.0.3](https://github.com/WhiteKiwi/actions-volume-cache/compare/v1.0.2...v1.0.3) (2026-10-15)
 
 
