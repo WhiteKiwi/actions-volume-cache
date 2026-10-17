@@ -10,11 +10,13 @@ sharing a UID, and power-loss durability are outside this initial support claim.
 Use `actions-volume-cache/v2/repos/<repository-id>/<sha256(key)>/<sha256(path)>`.
 Each entry has an atomically replaced `current.json` and immutable UUID-named
 generations containing a bounded manifest and a native payload. Manifests include
-relative paths, file hashes, sizes, ordinary permission bits, times, and link
-targets. Corrupt or incompatible entries are misses, not executable metadata.
+relative paths, sizes, ordinary permission bits, times, and link targets. New
+manifest schema 2 omits file digests. Schema 1 manifests are still accepted, but
+their payload digests are not verified. Older action versions reject schema 2
+manifests as misses; they can still publish schema 1 under the same v2 locks. Corrupt or incompatible entries are misses, not executable metadata.
 
 Permanent entry locks live in `locks/entries/<sha256(repository/key-hash/path-hash)>.lock`.
-Restore holds a shared entry lock while reading, preparing, and merging data.
+Restore holds a shared entry lock while reading, preparing, and replacing data.
 Publication and entry cleanup hold the exclusive entry lock. Multiple readers
 can overlap, and unrelated entries can copy data concurrently. After acquiring
 the lock, a reader re-reads the current pointer because its catalog snapshot may
@@ -26,7 +28,7 @@ size admission, and pointer publication. The lock order is entry then metadata;
 catalog reads release metadata before acquiring an entry lock. Shared readers
 serialize timestamp updates under metadata and re-read the pointer/time, so
 delayed readers cannot overwrite newer metadata. Payload copies, manifest
-construction, restore merging, and recursive deletion never hold metadata.
+construction, restore replacement, and recursive deletion never hold metadata.
 Metadata scans still grow with entry count; there is no constant-time index claim.
 
 `locks/workspaces/<sha256(canonical-workspace)>.lock` serializes recovery and
@@ -88,31 +90,49 @@ restore and roll back instead of deleting unrelated directories.
 
 ## Copies and restore transactions
 
-File copies use no-follow file opens and private files; no writable hard links
-point into committed entries. Hash files while copying and verify against the
-manifest before applying a restore. Preserve links without traversing targets.
-Bound manifests to 32 MiB and 100,000 nodes per unit. Refuse unsupported special
-files rather than attempting FIFO/device copies. Preserve ordinary mode bits and
-mtime, not ownership, ACLs, capabilities, set-ID bits, or hard-link topology.
+Open source files with O_NOFOLLOW and destination files with O_EXCL/O_NOFOLLOW.
+Native Node copyFile operates on those already-open files through Linux
+`/proc/self/fd`; procfs is a runtime prerequisite. Request COPYFILE_FICLONE so a
+supported filesystem can create a private CoW copy, with native ordinary copying
+as fallback. No writable hard links point into committed entries. Compare source
+size/mtime before and after copying and the destination size. Restores also check
+manifest sizes and node types. Do not hash file contents or compare payload
+digests, including legacy schema-1 payload digests. Same-size corruption is not
+detected; manifest hashes and bounded structural checks remain.
 
-Prepare restore data in a private directory beside the destination so rename
-operations stay on one filesystem. Preflight all destination types and ancestors.
-Write a preparing journal before copying, journal intended replacements, back up
-overwritten leaves, merge prepared leaves, then mark committed and reclaim
-backups. Before selecting restore/save units, scan each positive pattern's
-literal search tree for unfinished journals, without following directory links
-or entering transaction payloads. Inspect the search root's parent for its own
-journal as well. This adds a directory walk and recovers temporarily absent
-leaves or nested transactions even after the source cache is gone. Validate the
-journal's destination, parent, filename hash, and node paths before recovery.
-Unknown directories without a journal are preserved during discovery.
+Preserve links without traversing their targets. Bound manifests to 32 MiB and
+100,000 nodes per unit. Refuse unsupported special files. Preserve ordinary mode
+bits and mtime, not ownership, ACLs, capabilities, set-ID bits, or hard-link topology.
+Apply directory metadata from children to parents after preparing their contents.
 
-Normal exceptions roll back. Journal inspection/recovery failures fail the action
-because a previous merge may be incomplete. A killed process does not emit a hit;
-an interrupted workspace must not proceed as a successful restore. No multi-file
-atomicity or recovery from disk/controller power loss is claimed. Destination-only
-and excluded paths are never removed by a new restore; recovery completes the
-previous transaction before applying current exclusions.
+Prepare restore data in a private directory beside the destination so the final
+rename stays on one mounted filesystem. A schema-2 journal first records preparing,
+then applying and whether the destination existed. Rename the complete old root
+into transaction-owned backup when present, then rename the prepared root into
+place. Record committed before deleting backup data. Destination-only and existing
+excluded paths inside a replaced root are removed, including nested type
+collisions and links (without traversing them). Exclusions only filter the new
+copy. Misses and selections with no data preserve the existing destination.
+
+Normal exceptions roll back the complete root. Recovery of applying journals
+restores the backup, or removes a newly installed root if there was no previous
+root. Preparing journals discard private staging; committed journals only reclaim
+transaction data. Recovery remains idempotent after an interrupted rollback.
+Retain schema-1 journal validation and leaf rollback for interrupted older clients.
+Older clients cannot recover schema-2 journals and fail rather than continue a
+partially replaced workspace; use an updated action to recover before downgrading.
+Before selecting restore/save units, scan each positive pattern's literal search
+tree and its parent for unfinished journals without entering transaction payloads
+or following directory links. Recover before glob discovery so a missing root or
+source cache cannot hide its transaction. Unknown directories without a journal
+are preserved during discovery.
+
+Journal inspection/recovery failures fail the action because a previous
+replacement may be incomplete. A killed process does not emit a hit. No multi-root
+atomicity, atomicity across the backup/install renames, or recovery from
+controller/disk power loss is claimed. Builds must not overlap destination access.
+Save still copies into volume-local staging and publishes a generation/pointer;
+it never moves or consumes the job's source directory.
 
 ## Capacity and retention
 

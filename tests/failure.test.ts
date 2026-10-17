@@ -30,15 +30,15 @@ test('malformed or traversal manifest is ignored without writing arbitrary paths
   }
 });
 
-test('file/directory collisions do not delete the existing destination tree', async () => {
+test('whole-root replacement replaces nested file/directory collisions', async () => {
   const f = await fixture();
   try {
     await f.file('target/a', 'cache-file');
     await save(f.options);
     await f.reset();
     await f.file('target/a/keep', 'keep');
-    assert.equal(await restore(f.options, f.reporter), '');
-    assert.equal(await f.read('target/a/keep'), 'keep');
+    assert.equal(await restore(f.options, f.reporter), 'true');
+    assert.equal(await f.read('target/a'), 'cache-file');
   } finally {
     await f.close();
   }
@@ -137,7 +137,7 @@ test('cross-repository entries share the capacity budget but never the lookup na
   }
 });
 
-test('an interrupted merge recovers even after its source cache is deleted', async () => {
+test('an interrupted replacement recovers even after its source cache is deleted', async () => {
   const f = await fixture();
   let child: ReturnType<typeof spawn> | undefined;
   try {
@@ -155,7 +155,7 @@ test('an interrupted merge recovers even after its source cache is deleted', asy
         'restore',
         JSON.stringify(f.options),
         signal,
-        'restore-leaf',
+        'restore-installed',
       ],
       { stdio: 'ignore' },
     );

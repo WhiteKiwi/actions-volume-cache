@@ -35,6 +35,7 @@ export interface TreeNode {
   mode: number;
   mtime: number;
   bytes: number;
+  // Present only in legacy schema-1 manifests; payload digests are not verified.
   digest?: string;
   target?: string;
 }
@@ -53,7 +54,7 @@ export interface Entry {
 }
 
 export interface Manifest {
-  schema: 1;
+  schema: 1 | 2;
   nodes: TreeNode[];
 }
 export interface StoredEntry {

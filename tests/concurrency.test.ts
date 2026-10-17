@@ -151,7 +151,7 @@ test('concurrent distinct-key saves cannot bypass the aggregate admission budget
   }
 });
 
-test('interrupted destination merge is rolled back from its journal on the next restore', async () => {
+test('interrupted destination replacement is rolled back from its journal on the next restore', async () => {
   const f = await fixture();
   let child: ChildProcess | undefined;
   try {
@@ -161,8 +161,8 @@ test('interrupted destination merge is rolled back from its journal on the next 
     await f.reset();
     await f.file('target/a', 'original');
     await f.file('target/only', 'keep');
-    const signal = path.join(f.root, 'merge-kill');
-    const killed = worker('restore', f.options, signal, 'restore-leaf');
+    const signal = path.join(f.root, 'replacement-kill');
+    const killed = worker('restore', f.options, signal, 'restore-installed');
     child = killed.child;
     await signaled(signal);
     await terminate(child);
@@ -170,7 +170,7 @@ test('interrupted destination merge is rolled back from its journal on the next 
     // The next restore recovers the transaction, then applies the complete entry.
     assert.equal(await restore(f.options), 'true');
     assert.equal(await f.read('target/a'), 'cache');
-    assert.equal(await f.read('target/only'), 'keep');
+    await assert.rejects(f.read('target/only'), { code: 'ENOENT' });
     assert.ok(
       !(await fs.readdir(f.options.workspace)).some((name) => name.startsWith('.avc-restore-')),
     );
@@ -253,7 +253,7 @@ test('recovery precedes glob discovery and parent collapsing after the source ca
         'restore',
         f.options,
         signal,
-        leaf ? 'restore-backed-up' : 'restore-leaf',
+        leaf ? 'restore-backed-up' : 'restore-installed',
       );
       child = killed.child;
       await signaled(signal);

@@ -129,7 +129,10 @@ test('a corrupt cached parent does not shadow a usable cached descendant', async
       const parent = (await store.list()).find(
         (record) => record.entry.path === 'workspace:target',
       )!;
-      await fs.writeFile(path.join(store.generation(parent), 'payload/child/a'), 'corrupt');
+      await fs.writeFile(
+        path.join(store.generation(parent), 'payload/child/a'),
+        'truncated payload',
+      );
     });
     await f.reset();
     assert.equal(await restore({ ...f.options, paths: ['target/**'] }, f.reporter), 'false');

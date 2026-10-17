@@ -63,7 +63,7 @@ This is a work plan, not a choice of language or lock implementation.
    and make main/post state handoff explicit. Record supported runner versions.
 3. Implement namespaced metadata and per-path matching using synthetic cache
    fixtures. Handle fresh workspaces and fallback selection before optimizing I/O.
-4. Implement uncompressed staging, merge restoration, successful-job updates,
+4. Implement uncompressed staging, whole-root restoration, successful-job updates,
    and preservation of times, permissions, and links.
 5. Add concurrency control, publication recovery, age-based cleanup, and size
    admission checks together with multi-process acceptance tests.
@@ -82,7 +82,7 @@ engine must not require cluster APIs or manage Kubernetes volumes.
 - Check paths before and during relevant filesystem operations. A preflight
   string check alone does not handle symlink redirection or concurrent mutation.
 - Keep immutable published generations or another proven safe reader strategy;
-  do not assume a rename alone makes recursive merges, reclamation, or all
+  do not assume a rename alone makes root replacement, reclamation, or all
   filesystem types safe. The particular mechanism remains a design choice.
 - Never write new entry contents directly over a committed entry before success.
 - Do not hold a cache lock across the repository's build/test lifetime.

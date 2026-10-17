@@ -12,7 +12,7 @@ import {
   within,
   writeJson,
 } from './fs.js';
-import { ensureMergeable, materialize } from './tree.js';
+import { materialize } from './tree.js';
 import { collapse, patterns, searchRoot, validateTarget } from './paths.js';
 import { InputError, type Options, type TestHooks, type TreeNode } from './types.js';
 
@@ -23,12 +23,19 @@ interface PlanNode {
   mode: number;
   mtime: number;
 }
-interface Journal {
+interface MergeJournal {
   schema: 1;
   destination: string;
   phase: 'preparing' | 'applying' | 'committed';
   nodes: PlanNode[];
 }
+interface ReplacementJournal {
+  schema: 2;
+  destination: string;
+  phase: 'preparing' | 'applying' | 'committed';
+  hadOld: boolean;
+}
+type Journal = MergeJournal | ReplacementJournal;
 
 function prefix(destination: string): string {
   return `.avc-restore-${hash(destination).slice(0, 16)}-`;
@@ -44,6 +51,19 @@ async function unlinkLeaf(file: string): Promise<void> {
 }
 
 async function rollback(transaction: string, journal: Journal): Promise<void> {
+  if (journal.schema === 2) {
+    const parent = path.dirname(journal.destination);
+    const backup = path.join(transaction, 'backup');
+    await noSymlinkAncestors(journal.destination);
+    if (await statOptional(backup)) {
+      await removeOwned(parent, journal.destination);
+      await fs.rename(backup, journal.destination);
+    } else if (!journal.hadOld && !(await statOptional(path.join(transaction, 'payload')))) {
+      await removeOwned(parent, journal.destination);
+    }
+    return;
+  }
+  // Retain recovery for interrupted restores made by older action versions.
   for (const node of journal.nodes)
     if (node.directory) {
       const target = path.join(journal.destination, node.relative);
@@ -82,6 +102,13 @@ async function rollback(transaction: string, journal: Journal): Promise<void> {
 
 function validateJournal(value: unknown, destination: string): Journal {
   const journal = value as Journal;
+  if (
+    journal?.schema === 2 &&
+    journal.destination === destination &&
+    ['preparing', 'applying', 'committed'].includes(journal.phase) &&
+    typeof journal.hadOld === 'boolean'
+  )
+    return journal;
   if (
     !journal ||
     journal.schema !== 1 ||
@@ -209,69 +236,47 @@ export async function recoverSelectedRestores(options: Options): Promise<void> {
   }
 }
 
-export async function restoreMerged(
+export async function restoreReplaced(
   payload: string,
   destination: string,
   nodes: TreeNode[],
   hooks: TestHooks = {},
 ): Promise<void> {
   await recoverRestores(destination);
-  await ensureMergeable(destination, nodes);
+  await noSymlinkAncestors(destination);
   const parent = path.dirname(destination);
   await safeDirectory(parent);
   const transaction = path.join(parent, `${prefix(destination)}${randomUUID()}`);
   await fs.mkdir(transaction, { mode: 0o700 });
-  let journal: Journal | undefined;
+  let journal: ReplacementJournal | undefined;
   let preserve = false;
   try {
-    // Identify preparation before copying: discovery can recover this even if
-    // the cache entry or the live destination no longer exists after SIGKILL.
-    await writeJson(path.join(transaction, 'journal.json'), {
-      schema: 1,
+    journal = {
+      schema: 2,
       destination,
       phase: 'preparing',
-      nodes: [],
-    });
+      hadOld: false,
+    };
+    await writeJson(path.join(transaction, 'journal.json'), journal);
     await materialize(payload, path.join(transaction, 'payload'), nodes);
     await hooks.point?.('restore-prepared');
-    await fs.mkdir(path.join(transaction, 'backup'), { mode: 0o700 });
-    const plan: PlanNode[] = [];
-    for (const node of nodes) {
-      const existing = await statOptional(path.join(destination, node.relative));
-      plan.push({
-        relative: node.relative,
-        directory: node.kind === 'directory',
-        hadOld: !!existing,
-        mode: existing ? existing.mode & 0o777 : 0,
-        mtime: existing?.mtimeMs ?? 0,
-      });
-    }
-    journal = { schema: 1, destination, phase: 'applying', nodes: plan };
+    await noSymlinkAncestors(destination);
+    const existing = await statOptional(destination);
+    if (existing && !existing.isDirectory() && !existing.isFile() && !existing.isSymbolicLink())
+      throw new InputError('Unsupported restore destination type');
+    journal = { ...journal, phase: 'applying', hadOld: !!existing };
     await writeJson(path.join(transaction, 'journal.json'), journal);
-    for (const [index, node] of nodes.entries()) {
-      const target = path.join(destination, node.relative);
-      await noSymlinkAncestors(target);
-      if (node.kind === 'directory') {
-        if (!plan[index]!.hadOld) await fs.mkdir(target, { mode: 0o700 });
-      } else {
-        if (plan[index]!.hadOld) {
-          await fs.rename(target, path.join(transaction, 'backup', String(index)));
-          await hooks.point?.('restore-backed-up');
-        }
-        await fs.rename(path.join(transaction, 'payload', node.relative), target);
-      }
-      await hooks.point?.('restore-node');
-      if (node.kind !== 'directory') await hooks.point?.('restore-leaf');
+    if (existing) {
+      await fs.rename(destination, path.join(transaction, 'backup'));
+      await hooks.point?.('restore-backed-up');
     }
-    for (const node of [...nodes].reverse())
-      if (node.kind === 'directory') {
-        const target = path.join(destination, node.relative);
-        await fs.chmod(target, node.mode);
-        await fs.utimes(target, new Date(node.mtime), new Date(node.mtime));
-      }
+    await fs.rename(path.join(transaction, 'payload'), destination);
+    await hooks.point?.('restore-installed');
     await writeJson(path.join(transaction, 'journal.json'), { ...journal, phase: 'committed' });
+    journal.phase = 'committed';
+    await hooks.point?.('restore-committed');
   } catch (error) {
-    if (journal) {
+    if (journal?.phase === 'applying') {
       try {
         await rollback(transaction, journal);
       } catch {

@@ -133,12 +133,22 @@ paths still restore successfully. Globs can discover saved paths missing from
 a fresh workspace. Overlapping roots are handled without treating every nested
 file as an independent cache.
 
-Restoration merges into the destination. Cached files replace ordinary-file
-collisions, destination-only files remain, and exclusions stay untouched. File,
-directory, or link type collisions cause that restore to fail safely rather than
-deleting unrelated destination trees. Symlinks are preserved as links and are
-not followed. Original UID/GID, ACLs, extended attributes, capabilities, special
-permission bits, and hard-link topology are not restored.
+A usable hit replaces each selected destination root in full, even when it is
+nonempty. Destination-only files and existing excluded files inside that root are
+removed. Exclusions filter the incoming copy; they do not protect old files inside
+a replaced root. A miss leaves the destination unchanged. Select cache-only paths.
+
+The action prepares a copy beside the destination, renames the previous root to
+backup, installs the new root by rename, and removes the backup after commit.
+Interrupted replacements roll back before another restore/save. Save also copies
+before publishing; the job source remains available to other post steps.
+
+File contents are not checksum-verified; same-size payload corruption can be
+restored. Sizes, node types, safe paths, source changes, and metadata are still
+checked. Native copying requires Linux procfs (`/proc/self/fd`), tries reflink when
+supported, and falls back to ordinary copying. Symlinks are preserved as links
+without following their targets. Original UID/GID, ACLs, extended attributes,
+capabilities, special permission bits, and hard-link topology are not restored.
 
 Do not cache `/`, the entire home, or a target that overlaps `volume-path` in
 either direction. Directory symlinks below trusted workspace/home roots cannot

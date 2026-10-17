@@ -92,7 +92,7 @@ test('independent paths preserve reuse, aggregate output, and repository namespa
   }
 });
 
-test('merge restores overwrite collisions and preserve destination-only and excluded data', async () => {
+test('whole-root restores replace destination-only and excluded data', async () => {
   const f = await fixture({ paths: ['target', '!target/tmp/**'] });
   try {
     await f.file('target/a', 'cache');
@@ -105,9 +105,9 @@ test('merge restores overwrite collisions and preserve destination-only and excl
     await f.file('target/tmp/secret', 'keep-excluded');
     assert.equal(await restore(f.options), 'true');
     assert.equal(await f.read('target/a'), 'cache');
-    assert.equal(await f.read('target/b'), 'keep');
+    await assert.rejects(f.read('target/b'), { code: 'ENOENT' });
     assert.equal(await f.read('target/c'), 'new');
-    assert.equal(await f.read('target/tmp/secret'), 'keep-excluded');
+    await assert.rejects(f.read('target/tmp/secret'), { code: 'ENOENT' });
   } finally {
     await f.close();
   }
@@ -194,7 +194,7 @@ test('unsafe roots, volume overlaps and symlink aliases are rejected', async () 
   }
 });
 
-test('destination symlink ancestors cannot redirect writes outside the selected tree', async () => {
+test('whole-root replacement removes nested destination links without following them', async () => {
   const f = await fixture();
   try {
     await f.file('target/sub/a', 'cache');
@@ -203,14 +203,15 @@ test('destination symlink ancestors cannot redirect writes outside the selected 
     await f.file('outside/a', 'keep');
     await fs.mkdir(path.join(f.options.workspace, 'target'));
     await fs.symlink('../outside', path.join(f.options.workspace, 'target/sub'));
-    await assert.rejects(restore(f.options), InputError);
+    assert.equal(await restore(f.options), 'true');
+    assert.equal(await f.read('target/sub/a'), 'cache');
     assert.equal(await f.read('outside/a'), 'keep');
   } finally {
     await f.close();
   }
 });
 
-test('corrupt payload is not applied and remaining candidates are attempted', async () => {
+test('payload size mismatch is not applied and remaining candidates are attempted', async () => {
   const f = await fixture();
   try {
     await f.file('target/a', 'fallback');
@@ -220,12 +221,12 @@ test('corrupt payload is not applied and remaining candidates are attempted', as
     const store = new Store(f.options, f.reporter);
     await store.locked(async () => {
       const record = (await store.list()).find((record) => record.entry.key === f.options.key)!;
-      await fs.writeFile(path.join(store.generation(record), 'payload/a'), 'corrupt');
+      await fs.writeFile(path.join(store.generation(record), 'payload/a'), 'truncated payload');
     });
     await f.reset();
     assert.equal(await restore({ ...f.options, restoreKeys: ['fallback'] }, f.reporter), 'false');
     assert.equal(await f.read('target/a'), 'fallback');
-    assert.ok(f.warnings.some((message) => message.includes('checksum')));
+    assert.ok(f.warnings.some((message) => message.includes('size mismatch')));
   } finally {
     await f.close();
   }
@@ -240,10 +241,9 @@ test('restore application failure rolls back old files and removes newly install
     await f.reset();
     await f.file('target/a', 'original');
     await f.file('target/only', 'preserve');
-    let count = 0;
     const result = await restore(f.options, f.reporter, {
       async point(name) {
-        if (name === 'restore-node' && ++count === 3) throw new Error('injected application error');
+        if (name === 'restore-installed') throw new Error('injected application error');
       },
     });
     assert.equal(result, '');

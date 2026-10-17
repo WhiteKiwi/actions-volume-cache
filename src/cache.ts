@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { statOptional, within } from './fs.js';
 import { selectUnits, validateOptions } from './paths.js';
-import { recoverSelectedRestores, restoreMerged } from './restore.js';
+import { recoverSelectedRestores, restoreReplaced } from './restore.js';
 import { Store } from './store.js';
 import { hasData, selectedNodes, snapshot } from './tree.js';
 import {
@@ -73,7 +73,7 @@ export async function restore(
               const manifest = await store.manifest(current);
               const nodes = selectedNodes(manifest, unit.destination, options);
               if (!hasData(nodes)) return false;
-              await restoreMerged(
+              await restoreReplaced(
                 path.join(store.generation(current), 'payload'),
                 unit.destination,
                 nodes,

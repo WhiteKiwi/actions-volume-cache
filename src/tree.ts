@@ -1,9 +1,8 @@
 import * as fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import { excluded } from './paths.js';
-import { noSymlinkAncestors, safeRelative, statOptional } from './fs.js';
+import { noSymlinkAncestors, safeRelative } from './fs.js';
 import { InputError, type Manifest, type Options, type TreeNode } from './types.js';
 
 export const MAX_MANIFEST_BYTES = 32 * 1024 * 1024;
@@ -13,7 +12,7 @@ async function copyFile(
   source: string,
   target: string,
   expected?: TreeNode,
-): Promise<{ digest: string; bytes: number }> {
+): Promise<{ bytes: number }> {
   await noSymlinkAncestors(source);
   await noSymlinkAncestors(target);
   const reader = await fs.open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -26,31 +25,23 @@ async function copyFile(
       0o600,
     );
     try {
-      const digest = createHash('sha256');
-      let bytes = 0;
-      const buffer = Buffer.allocUnsafe(1024 * 1024);
-      while (true) {
-        const { bytesRead } = await reader.read(buffer, 0, buffer.length, null);
-        if (!bytesRead) break;
-        digest.update(buffer.subarray(0, bytesRead));
-        bytes += bytesRead;
-        let offset = 0;
-        while (offset < bytesRead) {
-          const { bytesWritten } = await writer.write(buffer, offset, bytesRead - offset, null);
-          if (!bytesWritten) throw new Error('Cache write made no progress');
-          offset += bytesWritten;
-        }
-      }
-      const sum = digest.digest('hex');
+      // Copy the already-open regular files, not workflow-controlled paths.
+      // Linux procfs keeps O_NOFOLLOW/O_EXCL handling while libuv can use
+      // reflink or kernel copying, falling back to a regular copy as needed.
+      await fs.copyFile(
+        `/proc/self/fd/${reader.fd}`,
+        `/proc/self/fd/${writer.fd}`,
+        constants.COPYFILE_FICLONE,
+      );
+      const bytes = (await writer.stat()).size;
       const after = await reader.stat();
       if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || bytes !== before.size)
         throw new Error('Source changed during cache copy');
-      if (expected && (expected.bytes !== bytes || expected.digest !== sum))
-        throw new Error('Cached file checksum mismatch');
+      if (expected && expected.bytes !== bytes) throw new Error('Cached file size mismatch');
       await writer.chmod((expected?.mode ?? before.mode) & 0o777);
       const mtime = new Date(expected?.mtime ?? before.mtimeMs);
       await writer.utimes(mtime, mtime);
-      return { digest: sum, bytes };
+      return { bytes };
     } finally {
       await writer.close();
     }
@@ -94,7 +85,7 @@ export async function snapshot(
     } else throw new Error(`Unsupported special file: ${file}`);
   }
   await visit(source, payload, '');
-  const manifest: Manifest = { schema: 1, nodes };
+  const manifest: Manifest = { schema: 2, nodes };
   if (Buffer.byteLength(JSON.stringify(manifest)) > MAX_MANIFEST_BYTES)
     throw new Error('Cache manifest exceeds 32 MiB');
   return manifest;
@@ -104,7 +95,7 @@ export function validateManifest(value: unknown): Manifest {
   const manifest = value as Manifest;
   if (
     !manifest ||
-    manifest.schema !== 1 ||
+    ![1, 2].includes(manifest.schema) ||
     !Array.isArray(manifest.nodes) ||
     !manifest.nodes.length ||
     manifest.nodes.length > MAX_NODES
@@ -133,6 +124,7 @@ export function validateManifest(value: unknown): Manifest {
         throw new Error('Cache manifest parent is not a directory');
     }
     if (
+      manifest.schema === 1 &&
       node.kind === 'file' &&
       (typeof node.digest !== 'string' || !/^[a-f0-9]{64}$/.test(node.digest))
     )
@@ -183,26 +175,16 @@ export async function materialize(
       await copyFile(source, target, node);
     }
   }
-  // Leave staging directories owner-writable until the merge has completed.
+  // Apply directory metadata after preparing children, before root replacement.
+  for (const node of [...nodes].reverse())
+    if (node.kind === 'directory') {
+      const target = path.join(destination, node.relative);
+      await fs.chmod(target, node.mode);
+      await fs.utimes(target, new Date(node.mtime), new Date(node.mtime));
+    }
 }
 
 export const payloadBytes = (nodes: TreeNode[]): number =>
   nodes.reduce((total, node) => total + node.bytes, 0);
 export const hasData = (nodes: TreeNode[]): boolean =>
   nodes.some((node) => node.kind !== 'directory');
-
-export async function ensureMergeable(destination: string, nodes: TreeNode[]): Promise<void> {
-  for (const node of nodes) {
-    const target = path.join(destination, node.relative);
-    await noSymlinkAncestors(target);
-    const stat = await statOptional(target);
-    if (!stat) continue;
-    if (node.kind === 'directory' && stat.isSymbolicLink())
-      throw new InputError(`Unsafe restore directory symlink: ${target}`);
-    if (node.kind === 'directory') {
-      if (!stat.isDirectory() || stat.isSymbolicLink())
-        throw new Error(`Restore directory collision: ${target}`);
-    } else if (stat.isDirectory() || (!stat.isFile() && !stat.isSymbolicLink()))
-      throw new Error(`Restore leaf collision: ${target}`);
-  }
-}
